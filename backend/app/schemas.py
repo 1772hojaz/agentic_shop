@@ -112,3 +112,101 @@ class StockInput(StrictModel):
         return value
 
 
+class PriceInput(StrictModel):
+    """Exact price change requiring actor confirmation."""
+
+    variant_id: str
+    price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+
+
+class ThresholdInput(StrictModel):
+    """Confirmed change to a variant's low-stock alert threshold."""
+
+    variant_id: str
+    threshold: int = Field(ge=0, le=1000000)
+
+
+class CartInput(StrictModel):
+    """Set a cart quantity, or remove an item using zero."""
+
+    variant_id: str
+    quantity: int = Field(ge=0, le=1000)
+
+
+class Checkout(StrictModel):
+    """Customer-supplied fulfillment choice and idempotency key."""
+
+    checkout_key: str = Field(min_length=16, max_length=100)
+    method: Literal["collection", "delivery"] = "collection"
+    address: str = Field(default="", max_length=500)
+
+
+class OrderStatus(StrictModel):
+    """Explicit requested transition with optional delivery details."""
+
+    order_id: str
+    status: Literal[
+        "processing",
+        "ready_for_delivery",
+        "out_for_delivery",
+        "delivered",
+        "completed",
+        "cancelled",
+        "delivery_failed",
+        "refund_pending",
+    ]
+    tracking: str = Field(default="", max_length=200)
+
+
+class PaymentInput(StrictModel):
+    """Supported initial payment methods."""
+
+    order_id: str
+    method: Literal["stripe", "cash"]
+
+
+class NotificationInput(StrictModel):
+    """A structured WhatsApp message sent by authorised staff."""
+
+    customer_id: str
+    text: str = Field(min_length=1, max_length=4000)
+    kind: Literal["text", "image", "document", "interactive", "template"] = (
+        "text"
+    )
+    media_url: str = Field(default="", max_length=500)
+    template_name: str = Field(default="", max_length=100)
+    language: str = Field(default="en_US", max_length=10)
+
+
+class ChatInput(StrictModel):
+    """A message scoped to a verified principal's conversation."""
+
+    message: str = Field(min_length=1, max_length=4000)
+    conversation_id: str | None = None
+
+
+class SettingInput(StrictModel):
+    """Non-secret shop configuration controlled by the owner."""
+
+    name: str = Field(default="Agentic Shop", max_length=100)
+    contact: str = Field(default="", max_length=100)
+    delivery_instructions: str = Field(default="", max_length=1000)
+    support_message: str = Field(default="", max_length=1000)
+    agent_instructions: str = Field(default="", max_length=2000)
+    notifications_enabled: bool = True
+
+
+class RoleUpdate(StrictModel):
+    """Owner-assigned permissions for operational staff roles."""
+
+    permissions: list[str] = Field(max_length=30)
+
+
+class AgentConfig(StrictModel):
+    """Owner-controlled model behavior without browser-visible credentials."""
+
+    model: str = Field(default="", max_length=100)
+    daily_tokens: int = Field(default=50000, ge=1000, le=1000000)
+    max_iterations: int = Field(default=4, ge=1, le=6)
+    input_price: float = Field(default=0, ge=0, le=10000, allow_inf_nan=False)
+    output_price: float = Field(default=0, ge=0, le=10000, allow_inf_nan=False)
