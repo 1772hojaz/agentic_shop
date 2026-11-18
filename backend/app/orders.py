@@ -142,3 +142,93 @@ def add_order_line(db, actor, order, item) -> None:
     order.total += variant.price * item.quantity
 
 
+def change_status(db: Session, actor: Principal, data: OrderStatus) -> dict:
+    """Execute an authorised fulfillment transition after confirmation."""
+    actor.require("orders.write")
+    order = db.scalar(
+        select(Order).where(Order.id == data.order_id).with_for_update()
+    )
+    if not order:
+        raise HTTPException(404, "Record not found")
+    transition(db, order, data.status, actor.id)
+    if data.tracking:
+        order.delivery = {**order.delivery, "tracking": data.tracking}
+    return order_detail(db, order)
+
+
+def transition(db, order: Order, target: str, actor_id: str) -> None:
+    """Enforce the state graph, preserving stock and payment boundaries."""
+    if target not in TRANSITIONS.get(order.status, set()):
+        raise HTTPException(409, f"Cannot move {order.status} to {target}")
+    validate_payment_boundary(db, order, target)
+    if target in {"cancelled", "expired"}:
+        release_stock(db, order, actor_id)
+    order.status = target
+    audit(db, actor_id, f"order.{target}", order.id)
+    order_notification(db, order)
+    db.flush()
+
+
+def validate_payment_boundary(db, order: Order, target: str) -> None:
+    """Allow unpaid cash fulfillment without pretending money was received."""
+    settled = db.scalar(
+        select(Payment.id).where(
+            Payment.order_id == order.id, Payment.status == "paid"
+        )
+    )
+    if target in {"completed", "refund_pending"} and not settled:
+        raise HTTPException(409, "This transition requires a settled payment")
+    if target in {"cancelled", "expired"} and settled:
+        raise HTTPException(409, "Settled orders require a refund")
+    if order.status == "pending_payment" and target == "processing":
+        cash = db.scalar(
+            select(Payment.id).where(
+                Payment.order_id == order.id,
+                Payment.method == "cash",
+                Payment.status == "pending",
+            )
+        )
+        if not cash:
+            raise HTTPException(409, "Payment or cash arrangement required")
+
+
+def release_stock(db: Session, order: Order, actor_id: str) -> None:
+    """Return an unpaid order's reserved stock exactly once."""
+    items = db.scalars(
+        select(OrderItem)
+        .where(OrderItem.order_id == order.id)
+        .order_by(OrderItem.variant_id)
+    )
+    for item in items:
+        move_stock(
+            db,
+            actor_id,
+            StockInput(
+                variant_id=item.variant_id,
+                delta=item.quantity,
+                reason=f"Release {order.id}",
+            ),
+        )
+
+
+def order_notification(db: Session, order: Order) -> None:
+    """Queue a customer update in the order transaction."""
+    customer = db.get(Customer, order.customer_id)
+    from app.notices import enabled
+
+    if customer and enabled(db):
+        db.add(
+            Notification(
+                recipient=customer.phone,
+                content={
+                    "type": "text",
+                    "text": {
+                        "body": (
+                            f"Order {order.id}: "
+                            f"{order.status.replace('_', ' ')}. "
+                            f"Total {order.currency} {order.total:.2f}."
+                        )
+                    },
+                },
+            )
+        )
