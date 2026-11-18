@@ -1,0 +1,780 @@
+# PROJECT PROMPT: AI-POWERED WHATSAPP E-COMMERCE MANAGEMENT PLATFORM
+
+## 1. Project Overview
+
+Design and develop a complete AI-powered e-commerce management platform that allows customers to discover products, receive recommendations, place orders, and interact with a shop through WhatsApp.
+
+The platform must also provide shop administrators with two ways to manage business operations:
+
+1. A web-based administration dashboard accessible through a computer browser.
+2. A WhatsApp-based administration interface that allows authorized administrators to manage the shop through conversational commands.
+
+Both interfaces must communicate with the same backend and database to ensure that business information remains synchronized.
+
+The platform must use a **single centralized AI agent** powered by an external language model API. The agent must support two operating contexts:
+
+- Customer Context: Handles shopping-related conversations.
+- Admin Context: Handles authorized business management operations.
+
+These are two contexts of the same agent, not separate AI agents.
+
+The application should be modular, secure, maintainable, responsive, and optimized to run on a low-resource Ubuntu VPS with approximately 1 GB RAM.
+
+---
+
+# 2. Platform Users and Interfaces
+
+The platform has three primary user categories.
+
+### A. Customers
+
+Customers interact with the platform primarily through WhatsApp.
+
+They should be able to:
+
+- Discover available products.
+- Search for products using natural language.
+- Browse product categories.
+- View product descriptions, images, and prices.
+- Ask questions about products.
+- Receive personalized product recommendations.
+- Check product availability.
+- Add products to their shopping cart.
+- Remove products from their cart.
+- Change product quantities.
+- View cart summaries.
+- Place orders.
+- Select available delivery or collection options.
+- Receive payment instructions.
+- Check payment status.
+- Track their orders.
+- Receive order confirmations and notifications.
+- View their previous orders.
+- Contact shop support.
+
+The customer experience should feel like interacting with a knowledgeable shop assistant rather than navigating a traditional command-based chatbot.
+
+For example:
+
+Customer: "I'm looking for black running shoes under $50."
+
+AI Agent: Searches the product catalogue, identifies matching products, checks availability, and presents suitable options.
+
+Customer: "I like the second pair. Add size 42 to my cart."
+
+AI Agent: Validates the product and variant, checks availability, and updates the customer's cart.
+
+### B. Shop Administrators
+
+Administrators must be able to manage the platform through both the web dashboard and WhatsApp.
+
+#### Web Administration Dashboard
+
+Develop a complete administration interface with the following modules:
+
+**Dashboard**
+- Total revenue.
+- Total orders.
+- Pending orders.
+- Completed orders.
+- Cancelled orders.
+- Total customers.
+- Products available.
+- Low-stock products.
+- Recent transactions.
+- Sales trends.
+- Revenue charts.
+- Order activity.
+
+**Product Management**
+- Create products.
+- Edit products.
+- Delete or archive products.
+- Upload product images.
+- Assign product categories.
+- Set product prices.
+- Add product descriptions.
+- Define product variants such as size and colour.
+- Set product availability.
+- Search and filter products.
+
+**Inventory Management**
+- View current stock levels.
+- Update stock quantities.
+- Record stock movements.
+- Set low-stock thresholds.
+- View stock adjustment history.
+- Identify out-of-stock products.
+
+**Order Management**
+- View all orders.
+- Search orders.
+- Filter orders by status.
+- View order details.
+- Update order statuses.
+- Cancel orders when permitted.
+- Process fulfilment.
+- Record delivery information.
+- View payment status.
+
+**Customer Management**
+- View registered customers.
+- Search customers.
+- View customer order histories.
+- View customer contact information.
+- Review customer activity.
+
+**Sales and Reporting**
+- Daily revenue.
+- Weekly revenue.
+- Monthly revenue.
+- Total sales.
+- Average order value.
+- Best-selling products.
+- Sales by product category.
+- Order completion rates.
+- Customer purchasing activity.
+
+**Staff and Permissions**
+- Create administrator accounts.
+- Register staff members.
+- Assign roles.
+- Configure permissions.
+- Restrict access to sensitive operations.
+- Review administrative activity.
+
+**AI Agent Configuration**
+- Configure the external model API.
+- Manage agent instructions.
+- Configure conversation behaviour.
+- Set token usage limits.
+- View AI usage statistics.
+- Monitor API costs.
+- View agent interaction logs.
+
+**Settings**
+- Shop information.
+- Contact details.
+- Currency.
+- Delivery settings.
+- Payment configurations.
+- Notification settings.
+- WhatsApp integration settings.
+
+#### WhatsApp Administration Interface
+
+Administrators should also be able to manage the shop conversationally.
+
+Examples:
+
+- "How much did the shop make today?"
+- "Show me orders that haven't been delivered."
+- "Which products are running low?"
+- "How many orders did we receive this week?"
+- "Change the price of product X to $25."
+- "Add 15 units to the stock of product Y."
+- "Show me the best-selling products this month."
+- "Find customer John."
+- "Cancel order number 104."
+
+The AI agent must identify the administrator, determine their permissions, validate requested operations, and execute only authorized actions.
+
+Sensitive actions, such as changing prices, adjusting inventory, cancelling orders, and modifying important settings, must require explicit confirmation before execution.
+
+---
+
+# 3. Single AI Agent Architecture
+
+Implement one centralized AI agent that communicates with an external model API.
+
+The agent must support two contexts.
+
+### Customer Context
+
+Responsible for:
+- Product discovery.
+- Product search.
+- Recommendations.
+- Product questions.
+- Cart assistance.
+- Order assistance.
+- Customer support.
+
+### Admin Context
+
+Responsible for:
+- Sales reporting.
+- Inventory lookup.
+- Product updates.
+- Stock adjustments.
+- Order management.
+- Customer lookup.
+- Administrative reporting.
+- Notifications.
+
+### Permission-Aware Tool Registry
+
+The AI agent must not have unrestricted database access.
+
+Implement a tool registry that exposes controlled backend operations.
+
+Every tool invocation must pass through validation that checks:
+
+1. User identity.
+2. User role.
+3. Tool permissions.
+4. Input parameter validity.
+5. Business rules.
+6. Confirmation requirements for sensitive actions.
+
+The tool registry should include:
+
+| Tool | Purpose |
+|---|---|
+| Product Search | Search the product catalogue |
+| Inventory Lookup | Retrieve available stock |
+| Cart Management | Add, remove and update cart items |
+| Order Management | Create, retrieve and update orders |
+| Sales Reporting | Generate business reports |
+| Customer Lookup | Retrieve customer information |
+| Stock Adjustment | Update inventory quantities |
+| Notifications | Send customer and admin notifications |
+
+The agent should request tool execution through the backend. The backend must validate and execute the requested operation before returning the result to the model.
+
+### AI Usage Optimization
+
+Because the platform uses an external model API:
+
+- Store API credentials securely on the server.
+- Never expose API keys to the frontend or WhatsApp.
+- Track input and output token consumption.
+- Monitor estimated API costs.
+- Limit conversation history.
+- Summarize older conversations when necessary.
+- Limit tool execution iterations.
+- Use timeouts and error handling.
+- Avoid unnecessary model calls.
+- Use deterministic backend logic for calculations, payments, stock checks, and order state changes.
+
+The AI should interpret natural language and coordinate tools, not independently determine authoritative business data.
+
+---
+
+# 4. WhatsApp Integration
+
+Integrate the official Meta WhatsApp Cloud API.
+
+Implement:
+
+- Webhook verification.
+- Incoming message processing.
+- Outgoing message delivery.
+- Customer identification.
+- Administrator identification.
+- Message status handling.
+- Image and document message support where appropriate.
+- Interactive WhatsApp messages where supported.
+- Error handling.
+- Conversation management.
+
+### Message Processing Flow
+
+1. A user sends a WhatsApp message.
+2. Meta forwards the message to the application's webhook.
+3. The backend verifies the webhook request.
+4. The backend identifies the sender.
+5. The system determines whether the sender is a customer or administrator.
+6. The appropriate context is loaded.
+7. The AI agent interprets the message.
+8. The agent requests tools when necessary.
+9. The permission-aware registry validates each tool request.
+10. Backend business services execute authorized operations.
+11. The result is returned to the agent.
+12. The agent generates a response.
+13. The response is sent to WhatsApp.
+
+Administrators must be registered and authenticated. Do not treat possession of a phone number alone as sufficient authorization for sensitive administrative actions.
+
+---
+
+# 5. Technical Architecture
+
+Use a modular monolithic architecture rather than microservices.
+
+The platform should have clear separation between presentation, application logic, business services, AI orchestration, security, and data persistence.
+
+### Backend
+
+Preferred technologies:
+
+- Python.
+- FastAPI.
+- SQLAlchemy.
+- Alembic.
+- PostgreSQL.
+- Pydantic.
+
+Organize the backend into independent functional modules:
+
+- Authentication and authorization.
+- User management.
+- Customer management.
+- Product catalogue.
+- Categories.
+- Inventory.
+- Shopping carts.
+- Orders.
+- Payments.
+- WhatsApp integration.
+- AI orchestration.
+- Tool registry.
+- Reporting.
+- Notifications.
+- Audit logging.
+
+Each module should expose well-defined services and API interfaces.
+
+### Frontend
+
+Use:
+
+- React.
+- TypeScript.
+- Tailwind CSS.
+- Recharts for data visualization.
+
+The frontend should be a responsive administration dashboard optimized for desktop computers while remaining usable on tablets and mobile devices.
+
+### Database
+
+Use PostgreSQL as the primary database.
+
+Design a relational schema covering:
+
+- Users.
+- Roles.
+- Permissions.
+- User-role assignments.
+- Customers.
+- Categories.
+- Products.
+- Product variants.
+- Inventory.
+- Stock movements.
+- Shopping carts.
+- Cart items.
+- Orders.
+- Order items.
+- Payments.
+- Payment events.
+- Conversations.
+- Messages.
+- AI sessions.
+- Notifications.
+- Audit logs.
+
+Use appropriate foreign keys, indexes, constraints, and transactions.
+
+Ensure that prices, stock quantities, order totals, and payment statuses are managed consistently.
+
+---
+
+# 6. Payment and Order Processing
+
+Implement a payment architecture that can support payment providers through external APIs.
+
+Allow payment methods to be configured according to the shop's operating market.
+
+Potential payment options include:
+- Mobile money.
+- Bank cards.
+- Bank transfers.
+- Cash on delivery or collection.
+
+Payment processing must be separate from order creation.
+
+An order should not be marked as paid simply because a customer initiated checkout.
+
+Implement:
+- Payment initiation.
+- Payment references.
+- Payment status tracking.
+- Verified payment webhooks.
+- Idempotent payment event processing.
+- Failed payment handling.
+- Refund status tracking where supported.
+
+Never store customers' card details or mobile money PINs.
+
+### Order Lifecycle
+
+Use clearly defined order states:
+
+- Pending Payment.
+- Paid.
+- Processing.
+- Ready for Delivery.
+- Out for Delivery.
+- Delivered.
+- Completed.
+- Cancelled.
+- Expired.
+- Delivery Failed.
+- Refund Pending.
+- Refunded.
+
+All status transitions must be validated by backend business rules.
+
+---
+
+# 7. Security and Access Control
+
+Security must be a fundamental part of the architecture.
+
+Implement:
+
+- Secure authentication.
+- Password hashing.
+- Role-based access control.
+- Permission-based tool execution.
+- API request validation.
+- Webhook signature verification where supported.
+- Rate limiting.
+- Input sanitization.
+- Secure secret management.
+- Audit logs.
+- Session management.
+- Protection against unauthorized data access.
+
+Create different permission levels for:
+
+**Owner**
+- Full business access.
+- Manage administrators.
+- Configure system settings.
+- View financial reports.
+- Manage products, inventory, and orders.
+
+**Manager**
+- Manage products.
+- Manage inventory.
+- Manage orders.
+- View permitted reports.
+
+**Staff**
+- Access assigned operational functions.
+- View and update permitted orders.
+- Perform authorized inventory operations.
+
+**Customer**
+- Access personal shopping information.
+- Manage personal cart.
+- Place and view personal orders.
+
+A user must never be able to access another customer's private information through AI tool manipulation or direct API requests.
+
+---
+
+# 8. User Interface Design
+
+Develop a professional e-commerce administration dashboard.
+
+Use a modern SaaS dashboard design with:
+
+- Persistent sidebar navigation.
+- Top navigation bar.
+- Main content area.
+- Responsive data tables.
+- Search and filtering.
+- Status badges.
+- Summary cards.
+- Charts.
+- Modal forms.
+- Notifications.
+- Loading states.
+- Empty states.
+- Error states.
+
+The dashboard should feel like a polished business management application rather than a basic CRUD interface.
+
+Suggested sidebar structure:
+
+**Overview**
+- Dashboard.
+
+**Commerce**
+- Products.
+- Categories.
+- Inventory.
+- Orders.
+- Customers.
+
+**Business Intelligence**
+- Sales Reports.
+- Analytics.
+
+**Communication**
+- WhatsApp Conversations.
+- Notifications.
+
+**Administration**
+- Staff.
+- Roles and Permissions.
+- AI Agent.
+- Settings.
+
+Use consistent design patterns throughout the application.
+
+---
+
+# 9. API Architecture
+
+Create versioned REST APIs.
+
+Suggested endpoints:
+
+**Authentication**
+- POST /api/v1/auth/login
+- POST /api/v1/auth/logout
+- GET /api/v1/auth/me
+
+**Products**
+- GET /api/v1/products
+- POST /api/v1/products
+- GET /api/v1/products/{id}
+- PATCH /api/v1/products/{id}
+- DELETE /api/v1/products/{id}
+
+**Inventory**
+- GET /api/v1/inventory
+- PATCH /api/v1/inventory/{id}
+- GET /api/v1/inventory/movements
+
+**Customers**
+- GET /api/v1/customers
+- GET /api/v1/customers/{id}
+
+**Orders**
+- GET /api/v1/orders
+- POST /api/v1/orders
+- GET /api/v1/orders/{id}
+- PATCH /api/v1/orders/{id}/status
+
+**Payments**
+- POST /api/v1/payments/initiate
+- GET /api/v1/payments/{id}
+
+**Reports**
+- GET /api/v1/reports/sales
+- GET /api/v1/reports/products
+- GET /api/v1/reports/orders
+
+**AI**
+- POST /api/v1/ai/chat
+- GET /api/v1/ai/usage
+
+**Webhooks**
+- GET /webhooks/whatsapp
+- POST /webhooks/whatsapp
+- POST /webhooks/payments
+
+Implement appropriate request and response schemas, validation, authentication, authorization, pagination, and error responses.
+
+---
+
+# 10. Infrastructure and Deployment
+
+The application must be designed to run on an Ubuntu VPS with approximately 1 GB RAM.
+
+Resource efficiency is a major architectural requirement.
+
+Use:
+
+- Ubuntu Server.
+- Nginx.
+- FastAPI.
+- Uvicorn.
+- PostgreSQL.
+- External AI model API.
+- Meta WhatsApp Cloud API.
+
+Deployment principles:
+
+1. Serve the compiled React frontend as static files through Nginx.
+2. Run FastAPI with a conservative worker configuration.
+3. Use PostgreSQL with memory settings appropriate for the VPS.
+4. Avoid unnecessary background processes.
+5. Avoid running local AI models.
+6. Avoid Kubernetes and microservices.
+7. Avoid Redis unless a demonstrated requirement justifies it.
+8. Use asynchronous processing only where it provides meaningful benefits.
+9. Monitor memory, CPU, disk, API latency, and application errors.
+10. Account for monitoring software when calculating available memory.
+
+Docker Compose may be used if its resource overhead is acceptable.
+
+Include:
+- Environment configuration.
+- Database migrations.
+- Automated backups.
+- Application logging.
+- Health checks.
+- HTTPS.
+- Deployment documentation.
+- Recovery procedures.
+
+---
+
+# 11. Monitoring and Observability
+
+Provide operational visibility into the platform.
+
+Track:
+
+- API response times.
+- Failed API requests.
+- WhatsApp webhook failures.
+- AI API errors.
+- AI token consumption.
+- Estimated AI expenditure.
+- Order processing failures.
+- Payment webhook failures.
+- Database connections.
+- CPU and RAM usage.
+- Disk utilization.
+
+Provide structured application logs and audit trails for important business operations.
+
+---
+
+# 12. Development Methodology
+
+Develop the platform incrementally.
+
+Do not attempt to implement every feature in one large, unstructured code generation process.
+
+Use the following development phases:
+
+**Phase 1: Foundation**
+- Project structure.
+- Database setup.
+- Authentication.
+- User roles and permissions.
+- Core API.
+
+**Phase 2: Commerce**
+- Product catalogue.
+- Categories.
+- Inventory.
+- Shopping carts.
+- Orders.
+
+**Phase 3: Administration**
+- Dashboard.
+- Product management.
+- Inventory management.
+- Order management.
+- Customer management.
+- Reports.
+
+**Phase 4: WhatsApp**
+- Meta Cloud API integration.
+- Webhook handling.
+- Customer conversations.
+- Administrator conversations.
+
+**Phase 5: AI Agent**
+- External model API integration.
+- Customer context.
+- Admin context.
+- Permission-aware tool registry.
+- Tool execution.
+- Conversation history.
+- Token usage tracking.
+
+**Phase 6: Payments and Notifications**
+- Payment provider integration.
+- Payment verification.
+- Order notifications.
+- Delivery updates.
+
+**Phase 7: Security and Testing**
+- Authorization tests.
+- API tests.
+- Business logic tests.
+- WhatsApp integration tests.
+- Payment webhook tests.
+- Performance tests.
+
+**Phase 8: Deployment**
+- Ubuntu server configuration.
+- Nginx.
+- HTTPS.
+- Database migrations.
+- Production environment.
+- Monitoring.
+- Backups.
+
+---
+
+# 13. Software Engineering Documentation
+
+Produce technical documentation alongside the implementation.
+
+Include:
+
+1. System architecture diagram.
+2. AI agent architecture diagram.
+3. Use case UML diagram.
+4. Class UML diagram.
+5. Component UML diagram.
+6. Deployment UML diagram.
+7. Sequence diagrams for customer shopping.
+8. Sequence diagrams for administrator operations.
+9. AI tool-calling sequence diagram.
+10. Order lifecycle activity diagram.
+11. Order state machine diagram.
+12. Database entity relationship diagram.
+13. API documentation.
+14. Database schema documentation.
+15. Deployment documentation.
+
+Use Mermaid or another suitable diagramming format for source diagrams.
+
+---
+
+# 14. Quality and Acceptance Criteria
+
+The platform is considered functionally complete when:
+
+- Customers can interact with the shop through WhatsApp.
+- Customers can search products and receive accurate recommendations.
+- Customers can manage carts and place orders.
+- Administrators can manage the shop through a web dashboard.
+- Administrators can also manage the shop through WhatsApp.
+- Both administration interfaces use the same backend and database.
+- One AI agent handles both customer and administrator contexts.
+- Tool execution is permission-aware.
+- Sensitive actions require confirmation.
+- Stock quantities remain consistent.
+- Order and payment statuses are independently tracked.
+- Unauthorized users cannot execute administrative operations.
+- AI API usage and costs can be monitored.
+- The application can operate within the constraints of a low-memory VPS.
+
+### Final Development Instruction
+
+Before implementing the platform, examine the complete requirements and produce a technical implementation plan.
+
+Define the system architecture, database relationships, API contracts, module responsibilities, AI agent workflow, security boundaries, and deployment strategy.
+
+Identify dependencies and architectural risks before writing code.
+
+Implement the platform using clean, modular, maintainable code. Do not introduce unnecessary technologies or infrastructure.
+
+Prioritize correctness, security, low resource consumption, and a consistent user experience.
+
+Do not use mock functionality as a substitute for real integrations in production. Clearly distinguish working integrations from development placeholders.
+
+Build a complete, integrated platform rather than a collection of disconnected demonstration pages.
