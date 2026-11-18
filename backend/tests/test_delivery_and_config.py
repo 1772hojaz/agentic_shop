@@ -61,3 +61,76 @@ def test_durable_stripe_initialization_uses_stable_payment_id(
         assert db.get(Order, order["id"]).status == "pending_payment"
 
 
+def test_agent_configuration_requires_confirmation(client, headers):
+    config = client.get("/api/v1/ai/config", headers=headers["owner"]).json()
+    config["model"] = "operator-selected-model"
+    pending = client.put(
+        "/api/v1/ai/config",
+        headers=headers["owner"],
+        json=config,
+    ).json()
+    assert pending["confirmation_required"]
+    assert (
+        client.get("/api/v1/ai/config", headers=headers["owner"]).json()[
+            "model"
+        ]
+        != config["model"]
+    )
+    assert (
+        client.post(
+            f"/api/v1/confirmations/{pending['id']}/confirm",
+            headers=headers["owner"],
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get("/api/v1/ai/config", headers=headers["owner"]).json()[
+            "model"
+        ]
+        == config["model"]
+    )
+
+
+def test_refund_webhook_replay_cannot_resurrect_paid_state(
+    client, headers, product, store
+):
+    order = place_order(client, headers, product)
+    with store.begin() as db:
+        payment = Payment(
+            order_id=order["id"],
+            amount=Decimal("51.00"),
+            currency="USD",
+            method="stripe",
+            reference="cs_refund",
+            status="paid",
+        )
+        db.add(payment)
+        record = db.get(Order, order["id"])
+        record.status = "refund_pending"
+        db.flush()
+        payload = {
+            "id": "evt_refund",
+            "type": "refund.updated",
+            "data": {
+                "object": {
+                    "metadata": {"payment_id": payment.id},
+                    "amount": 5100,
+                    "currency": "usd",
+                    "status": "succeeded",
+                },
+            },
+        }
+        payment_event(db, payload)
+        assert payment.status == "refunded"
+        assert record.status == "refunded"
+        settle_payment(db, payment, "stripe")
+        assert payment.status == "refunded"
+
+
+def test_image_upload_rejects_non_images(client, headers):
+    response = client.post(
+        "/api/v1/uploads",
+        headers=headers["owner"],
+        files={"file": ("attack.jpg", b"<script>bad</script>", "image/jpeg")},
+    )
+    assert response.status_code == 422
