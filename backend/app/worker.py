@@ -52,3 +52,80 @@ def deliver(db, job) -> None:
     job.external_id = send_message(job.recipient, job.content)
 
 
+def start_payment() -> None:
+    """Initialize a durable payment with stable provider idempotency."""
+    with SessionLocal.begin() as db:
+        payment = db.scalar(
+            select(Payment)
+            .where(Payment.status == "initializing")
+            .order_by(Payment.created_at)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if not payment:
+            return
+        payment.provider_attempts += 1
+        try:
+            order = db.get(Order, payment.order_id)
+            if order.status != "pending_payment":
+                payment.status = "failed"
+                return
+            create_stripe_session(payment, order)
+            payment.provider_error = ""
+            customer = db.get(Customer, order.customer_id)
+            queue_text(
+                db,
+                customer.phone,
+                "Complete your payment: " + payment.checkout_url,
+            )
+        except HTTPException as error:
+            payment.provider_error = str(error.detail)
+            if payment.provider_attempts >= 5:
+                payment.status = "failed"
+
+
+def receive(db, job) -> None:
+    """Process one already verified, deduplicated Meta message."""
+    try:
+        process_message(db, job.payload)
+    except HTTPException as error:
+        if error.status_code < 500:
+            db.add(
+                Notification(
+                    recipient=job.payload["from"],
+                    content={
+                        "type": "text",
+                        "text": {"body": str(error.detail)},
+                    },
+                )
+            )
+        else:
+            raise
+
+
+def expire_orders() -> None:
+    """Release abandoned reservations in small locked batches."""
+    with SessionLocal.begin() as db:
+        orders = db.scalars(
+            select(Order)
+            .where(
+                Order.status == "pending_payment", Order.expires_at < utcnow()
+            )
+            .with_for_update(skip_locked=True)
+            .limit(10)
+        )
+        for order in orders:
+            transition(db, order, "expired", "system")
+
+
+async def worker_loop() -> None:
+    """Poll at a conservative rate in a single background task."""
+    while True:
+        try:
+            await asyncio.to_thread(process_one, WebhookJob, receive)
+            await asyncio.to_thread(process_one, Notification, deliver)
+            await asyncio.to_thread(expire_orders)
+            await asyncio.to_thread(start_payment)
+        except Exception:
+            logger.exception("worker_iteration_failed")
+        await asyncio.sleep(3)
