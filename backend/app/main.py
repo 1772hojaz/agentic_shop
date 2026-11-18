@@ -96,3 +96,37 @@ async def request_boundary(request: Request, call_next):
     return response
 
 
+@app.exception_handler(IntegrityError)
+async def conflict(request, error):
+    """Hide database details and report unique/foreign-key conflicts."""
+    return JSONResponse({"detail": "Record conflicts with existing data"}, 409)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, error):
+    """Report validation fields without echoing passwords or secrets."""
+    fields = [
+        {
+            "field": ".".join(str(x) for x in item["loc"]),
+            "message": item["msg"],
+        }
+        for item in error.errors()
+    ]
+    return JSONResponse({"detail": "Invalid request", "fields": fields}, 422)
+
+
+@app.get("/health")
+def health():
+    """Report process liveness without making external provider requests."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    """Report readiness only when migrations and storage are reachable."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT version_num FROM alembic_version"))
+        return {"status": "ready"}
+    except Exception:
+        return JSONResponse({"status": "unavailable"}, 503)
