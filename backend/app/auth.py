@@ -126,3 +126,81 @@ def current_principal(
     raise HTTPException(401, "Invalid session")
 
 
+def require(permission: str):
+    """Build a dependency enforcing an explicit capability."""
+
+    def dependency(actor: Principal = Depends(current_principal)):
+        """Return the authorised principal to the route."""
+        actor.require(permission)
+        return actor
+
+    return dependency
+
+
+def create_session(db: Session, user_id: str) -> tuple[str, AuthSession]:
+    """Issue a revocable, expiring browser session."""
+    token = secrets.token_urlsafe(32)
+    session = AuthSession(
+        token_hash=digest(token),
+        user_id=user_id,
+        expires_at=utcnow() + timedelta(hours=get_settings().session_hours),
+        csrf=secrets.token_urlsafe(24),
+    )
+    db.add(session)
+    return token, session
+
+
+def seed_roles(db: Session) -> None:
+    """Create initial roles without overwriting configured permissions."""
+    for name in sorted(PERMISSIONS):
+        if not db.get(Permission, name):
+            db.add(Permission(name=name))
+    db.flush()
+    for name in ("owner", "manager", "staff"):
+        if db.scalar(select(Role).where(Role.name == name)):
+            continue
+        role = Role(name=name)
+        db.add(role)
+        db.flush()
+        grants = role_defaults(name)
+        for permission in grants:
+            db.add(RolePermission(role_id=role.id, permission=permission))
+
+
+def role_defaults(name: str) -> set[str]:
+    """Keep owner powers distinct from routine operational roles."""
+    if name == "owner":
+        return PERMISSIONS
+    if name == "manager":
+        return PERMISSIONS - {"staff.write", "settings.write"}
+    return {"products.read", "orders.read", "orders.write", "ai.chat"}
+
+
+def assign_role(db: Session, user_id: str, name: str) -> None:
+    """Replace a user's role assignment inside the current transaction."""
+    role = db.scalar(select(Role).where(Role.name == name))
+    if not role:
+        raise HTTPException(422, "Unknown role")
+    db.execute(delete(UserRole).where(UserRole.user_id == user_id))
+    db.add(UserRole(user_id=user_id, role_id=role.id))
+
+
+def request_confirmation(
+    db: Session, actor: Principal, action: str, payload: dict
+) -> dict:
+    """Persist an exact pending action that the model cannot approve."""
+    confirmation = Confirmation(
+        principal_id=actor.id,
+        action=action,
+        payload=payload,
+        expires_at=utcnow() + timedelta(minutes=5),
+    )
+    db.add(confirmation)
+    db.flush()
+    return {
+        "confirmation_required": True,
+        "id": confirmation.id,
+        "action": action,
+        "payload": payload,
+        "expires_at": confirmation.expires_at.isoformat(),
+    }
