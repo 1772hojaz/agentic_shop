@@ -57,3 +57,22 @@ def test_budget_stop_preserves_provider_usage(client, headers, monkeypatch):
     )
 
 
+def test_admin_product_creation_uses_exact_confirmation(store, identities):
+    with store.begin() as db:
+        owner = db.get(User, identities["owner"]["id"])
+        actor = user_principal(db, owner)
+        pending = execute_tool(
+            db,
+            actor,
+            "product_create",
+            {
+                "name": "Confirmed catalogue item",
+                "variants": [
+                    {"sku": "CONFIRMED-1", "price": "8.00", "quantity": 4}
+                ],
+            },
+        )
+        assert db.query(Product).count() == 0
+        result = confirm_action(db, actor, pending["id"])
+        assert result["name"] == "Confirmed catalogue item"
+        assert db.query(Product).count() == 1
