@@ -130,3 +130,95 @@ def pair(actor=Depends(current_principal), db=Depends(get_db)):
     return pairing_code(db, actor)
 
 
+@router.get("/staff")
+def staff(actor=Depends(require("staff.write")), db=Depends(get_db)):
+    """List accounts and assigned roles without password hashes."""
+    result = []
+    for user in db.scalars(select(User).order_by(User.created_at)):
+        roles = db.scalars(
+            select(Role.name)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(UserRole.user_id == user.id)
+        ).all()
+        result.append({**serialize(user), "roles": roles})
+    return {"items": result, "total": len(result)}
+
+
+@router.post("/staff", status_code=201)
+def create_staff(
+    data: StaffInput, actor=Depends(require("staff.write")), db=Depends(get_db)
+):
+    """Register a password-protected staff account with an explicit role."""
+    if db.scalar(select(User).where(User.email == data.email.lower())):
+        raise HTTPException(409, "Email is already registered")
+    user = User(
+        email=data.email.lower(),
+        name=data.name,
+        password_hash=hash_password(data.password),
+    )
+    db.add(user)
+    db.flush()
+    assign_role(db, user.id, data.role)
+    audit(db, actor.id, "staff.create", user.id)
+    return serialize(user)
+
+
+@router.patch("/staff/{user_id}")
+def update_staff(
+    user_id: str,
+    data: StaffUpdate,
+    actor=Depends(require("staff.write")),
+    db=Depends(get_db),
+):
+    """Modify roles without allowing the current owner to lock itself out."""
+    user = get_record(db, User, user_id)
+    if user.id == actor.id and (data.role != "owner" or not data.active):
+        raise HTTPException(409, "Cannot remove your own owner access")
+    assign_role(db, user.id, data.role)
+    user.active = data.active
+    db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+    db.execute(delete(AdminBinding).where(AdminBinding.user_id == user.id))
+    audit(db, actor.id, "staff.update", user.id)
+    return serialize(user)
+
+
+@router.get("/roles")
+def roles(actor=Depends(require("staff.write")), db=Depends(get_db)):
+    """List role definitions and explicit backend permission grants."""
+    return [
+        {
+            "id": role.id,
+            "name": role.name,
+            "permissions": list(
+                db.scalars(
+                    select(RolePermission.permission).where(
+                        RolePermission.role_id == role.id
+                    )
+                )
+            ),
+        }
+        for role in db.scalars(select(Role))
+    ]
+
+
+@router.patch("/roles/{role_id}")
+def update_role(
+    role_id: str,
+    data: RoleUpdate,
+    actor=Depends(require("staff.write")),
+    db=Depends(get_db),
+):
+    """Configure operational grants while protecting the owner role."""
+    from app.auth import PERMISSIONS
+
+    role = get_record(db, Role, role_id)
+    if role.name == "owner":
+        raise HTTPException(409, "Owner permissions are fixed")
+    grants = set(data.permissions)
+    if not grants <= PERMISSIONS - {"staff.write", "settings.write"}:
+        raise HTTPException(422, "Unknown or owner-only permission")
+    db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
+    for permission in grants:
+        db.add(RolePermission(role_id=role.id, permission=permission))
+    audit(db, actor.id, "role.update", role.id)
+    return {"id": role.id, "permissions": sorted(grants)}
