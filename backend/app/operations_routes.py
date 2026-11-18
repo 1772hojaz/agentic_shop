@@ -164,3 +164,126 @@ def conversation(
     )
 
 
+@router.get("/notifications")
+def notifications(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+    actor=Depends(require("notifications.write")),
+    db=Depends(get_db),
+):
+    """Inspect delivery state and bounded retry errors."""
+    return page(
+        db,
+        select(Notification).order_by(Notification.created_at.desc()),
+        offset,
+        limit,
+    )
+
+
+@router.post("/notifications")
+def notify(
+    data: NotificationInput,
+    actor=Depends(require("notifications.write")),
+    db=Depends(get_db),
+):
+    """Request a customer message with explicit delivery confirmation."""
+    return execute_tool(db, actor, "notifications", data.model_dump())
+
+
+@router.get("/confirmations")
+def confirmations(actor=Depends(current_principal), db=Depends(get_db)):
+    """List only the authenticated principal's pending confirmations."""
+    from app.database import utcnow
+
+    return {
+        "items": [
+            serialize(row)
+            for row in db.scalars(
+                select(Confirmation)
+                .where(
+                    Confirmation.principal_id == actor.id,
+                    Confirmation.consumed.is_(False),
+                    Confirmation.expires_at > utcnow(),
+                )
+                .order_by(Confirmation.created_at.desc())
+                .limit(50)
+            )
+        ]
+    }
+
+
+@router.post("/confirmations/{confirmation_id}/confirm")
+def confirm(
+    confirmation_id: str, actor=Depends(current_principal), db=Depends(get_db)
+):
+    """Execute a human-approved exact action, independently of the model."""
+    return confirm_action(db, actor, confirmation_id)
+
+
+@router.get("/settings")
+def settings(actor=Depends(require("settings.write")), db=Depends(get_db)):
+    """Return editable shop settings and credential configuration flags."""
+    config = get_settings()
+    record = db.get(ShopSetting, "shop")
+    return {
+        "shop": record.value if record else SettingInput().model_dump(),
+        "currency": config.currency,
+        "integrations": {
+            "ai": bool(config.ai_api_key and agent_config(db).model),
+            "whatsapp": bool(
+                config.meta_access_token and config.meta_phone_id
+            ),
+            "stripe": bool(config.stripe_secret_key),
+        },
+        "model": agent_config(db).model,
+        "daily_tokens": agent_config(db).daily_tokens,
+    }
+
+
+@router.put("/settings")
+def save_settings(
+    data: SettingInput,
+    actor=Depends(require("settings.write")),
+    db=Depends(get_db),
+):
+    """Request confirmation before changing business configuration."""
+    return execute_tool(db, actor, "settings_update", data.model_dump())
+
+
+@router.get("/audit")
+def audits(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+    actor=Depends(require("audit.read")),
+    db=Depends(get_db),
+):
+    """Read committed action history without secrets or raw passwords."""
+    return page(
+        db,
+        select(AuditLog).order_by(AuditLog.created_at.desc()),
+        offset,
+        limit,
+    )
+
+
+@router.get("/integration-jobs")
+def jobs(actor=Depends(require("settings.write")), db=Depends(get_db)):
+    """Show integration job counts without exposing incoming payloads."""
+    rows = db.execute(
+        select(WebhookJob.status, func.count()).group_by(WebhookJob.status)
+    ).all()
+    return {"whatsapp": dict(rows)}
+
+
+@router.post("/payments/{payment_id}/{action}")
+def payment_action(
+    payment_id: str,
+    action: str,
+    actor=Depends(require("payments.write")),
+    db=Depends(get_db),
+):
+    """Request staff-confirmed cash receipt or provider refund."""
+    actions = {"settle-cash": "cash_settlement", "refund": "payment_refund"}
+    if action not in actions:
+        raise HTTPException(404, "Unknown payment action")
+    return execute_tool(db, actor, actions[action], {"id": payment_id})
