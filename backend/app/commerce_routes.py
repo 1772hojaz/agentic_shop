@@ -239,3 +239,133 @@ def add_category(
     return serialize(category)
 
 
+@router.get("/inventory/movements")
+def movements(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+    actor=Depends(require("inventory.read")),
+    db=Depends(get_db),
+):
+    """Retrieve stock adjustment history with reasons and actors."""
+    return page(
+        db,
+        select(StockMovement).order_by(StockMovement.created_at.desc()),
+        offset,
+        limit,
+    )
+
+
+@router.get("/inventory")
+def inventory(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+    actor=Depends(require("inventory.read")),
+    db=Depends(get_db),
+):
+    """List stock balances with readable product and option labels."""
+    result = page(
+        db, select(Inventory).order_by(Inventory.quantity), offset, limit
+    )
+    for row in result["items"]:
+        variant = get_record(db, Variant, row["variant_id"])
+        row["sku"] = variant.sku
+        row["price"] = variant.price
+        row["options"] = variant.options
+        row["name"] = get_record(db, Product, variant.product_id).name
+    return result
+
+
+@router.patch("/inventory/{variant_id}")
+def adjust_stock(
+    variant_id: str,
+    data: StockInput,
+    actor=Depends(require("inventory.write")),
+    db=Depends(get_db),
+):
+    """Request a stock adjustment requiring explicit human confirmation."""
+    if variant_id != data.variant_id:
+        raise HTTPException(422, "Variant mismatch")
+    return execute_tool(db, actor, "stock_adjustment", data.model_dump())
+
+
+@router.get("/carts/me")
+def view_cart(actor=Depends(current_principal), db=Depends(get_db)):
+    """Retrieve only the authenticated customer's cart."""
+    return cart_detail(db, actor)
+
+
+@router.put("/carts/me/items")
+def cart_item(
+    data: CartInput, actor=Depends(current_principal), db=Depends(get_db)
+):
+    """Set a quantity in the current customer's personal cart."""
+    return set_cart(db, actor, data)
+
+
+@router.post("/orders", status_code=201)
+def create_order(
+    data: Checkout, actor=Depends(current_principal), db=Depends(get_db)
+):
+    """Reserve a cart and create an unpaid order."""
+    return checkout(db, actor, data)
+
+
+@router.get("/orders")
+def orders(
+    status: str = "",
+    query: str = Query("", max_length=100),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+    actor=Depends(current_principal),
+    db=Depends(get_db),
+):
+    """List authorised orders, applying ownership before filtering."""
+    statement = select(Order).order_by(Order.created_at.desc())
+    if actor.context == "customer":
+        statement = statement.where(Order.customer_id == actor.id)
+    else:
+        actor.require("orders.read")
+    if status:
+        statement = statement.where(Order.status == status)
+    if query:
+        statement = statement.where(Order.id.contains(query))
+    return page(db, statement, offset, limit)
+
+
+@router.get("/orders/{order_id}")
+def view_order(
+    order_id: str, actor=Depends(current_principal), db=Depends(get_db)
+):
+    """Retrieve order details only after ownership or staff permission."""
+    return order_detail(db, visible_order(db, actor, order_id))
+
+
+@router.patch("/orders/{order_id}/status")
+def order_status(
+    order_id: str,
+    data: OrderStatus,
+    actor=Depends(require("orders.write")),
+    db=Depends(get_db),
+):
+    """Request an order state transition requiring human confirmation."""
+    if order_id != data.order_id:
+        raise HTTPException(422, "Order mismatch")
+    return execute_tool(db, actor, "order_management", data.model_dump())
+
+
+@router.post("/payments/initiate")
+def start_payment(
+    data: PaymentInput, actor=Depends(current_principal), db=Depends(get_db)
+):
+    """Initiate cash instructions or real hosted Stripe checkout."""
+    return initiate_payment(db, actor, data)
+
+
+@router.get("/payments/{payment_id}")
+def get_payment(
+    payment_id: str, actor=Depends(current_principal), db=Depends(get_db)
+):
+    """Read payment status after authorising its parent order."""
+    record = get_record(db, Payment, payment_id)
+    visible_order(db, actor, record.order_id)
+    return serialize(record)
