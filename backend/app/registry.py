@@ -200,3 +200,245 @@ def update_settings(db, actor, data):
     return record.value
 
 
+class OptionalRecord(StrictModel):
+    """A lookup of one record or a bounded list."""
+
+    id: str = ""
+
+
+def support_info(db) -> dict:
+    """Expose public support details without internal agent instructions."""
+    record = db.get(ShopSetting, "shop")
+    values = record.value if record else {}
+    keys = {"name", "contact", "delivery_instructions", "support_message"}
+    return {key: values.get(key, "") for key in keys}
+
+
+TOOLS = {
+    "product_create": Tool(
+        "products.write",
+        ProductInput,
+        create_product,
+        "Create a product and variants after human confirmation.",
+        True,
+    ),
+    "product_update": Tool(
+        "products.write",
+        ProductChange,
+        lambda db, actor, data: update_product(
+            db,
+            actor,
+            data.product_id,
+            ProductUpdate.model_validate(
+                data.model_dump(exclude={"product_id"})
+            ),
+        ),
+        "Update product information after human confirmation.",
+        True,
+    ),
+    "category_browse": Tool(
+        "products.read",
+        Empty,
+        lambda db, actor, data: [
+            serialize(row) for row in db.scalars(select(Category).limit(100))
+        ],
+        "List the shop's product categories.",
+    ),
+    "shop_support": Tool(
+        "products.read",
+        Empty,
+        lambda db, actor, data: support_info(db),
+        "Retrieve contact details, delivery and support instructions.",
+    ),
+    "stock_threshold": Tool(
+        "inventory.write",
+        ThresholdInput,
+        update_threshold,
+        "Configure a low-stock threshold after confirmation.",
+        True,
+    ),
+    "payment_lookup": Tool(
+        "orders.own",
+        RecordInput,
+        lookup_payment,
+        "Check real payment status and checkout URL; initializing is unpaid.",
+    ),
+    "agent_configure": Tool(
+        "settings.write",
+        AgentConfig,
+        configure_agent,
+        "Change model, daily usage budget and cost estimates.",
+        True,
+    ),
+    "payment_initiation": Tool(
+        "orders.own",
+        PaymentInput,
+        initiate_payment,
+        "Get cash instructions or a real hosted Stripe checkout URL.",
+    ),
+    "product_search": Tool(
+        "products.read",
+        Search,
+        lambda db, actor, data: search_products(db, data),
+        "Search current products, prices, variants and availability.",
+    ),
+    "inventory_lookup": Tool(
+        "inventory.read",
+        OptionalRecord,
+        inventory_lookup,
+        "Look up available stock; id is a variant ID or empty.",
+    ),
+    "cart_view": Tool(
+        "cart.own",
+        Empty,
+        lambda db, actor, data: cart_detail(db, actor),
+        "View the authenticated customer's personal cart.",
+    ),
+    "cart_management": Tool(
+        "cart.own",
+        CartInput,
+        set_cart,
+        "Set a personal cart item quantity; zero removes it.",
+    ),
+    "order_create": Tool(
+        "orders.own",
+        Checkout,
+        checkout,
+        "Create an unpaid order from the personal cart after user agreement.",
+        True,
+    ),
+    "order_lookup": Tool(
+        "orders.own",
+        OptionalRecord,
+        list_orders,
+        "Retrieve personal orders; optional id selects one order.",
+    ),
+    "admin_orders": Tool(
+        "orders.read",
+        OptionalRecord,
+        list_orders,
+        "Retrieve shop orders for authorised staff.",
+    ),
+    "order_management": Tool(
+        "orders.write",
+        OrderStatus,
+        change_status,
+        "Request a fulfillment transition; requires human confirmation.",
+        True,
+    ),
+    "sales_reporting": Tool(
+        "reports.read",
+        Empty,
+        lambda db, actor, data: sales_report(db),
+        "Retrieve the last 30 days of verified sales and order metrics.",
+    ),
+    "customer_lookup": Tool(
+        "customers.read",
+        CategoryInput,
+        lookup_customer,
+        "Search customers by name, for authorised administrators only.",
+    ),
+    "stock_adjustment": Tool(
+        "inventory.write",
+        StockInput,
+        lambda db, actor, data: move_stock(db, actor.id, data),
+        "Request a stock adjustment; requires human confirmation.",
+        True,
+    ),
+    "product_price": Tool(
+        "products.write",
+        PriceInput,
+        update_price,
+        "Request an exact price change; requires human confirmation.",
+        True,
+    ),
+    "notifications": Tool(
+        "notifications.write",
+        NotificationInput,
+        queue_notification,
+        "Request a customer notification; requires human confirmation.",
+        True,
+    ),
+    "settings_update": Tool(
+        "settings.write",
+        SettingInput,
+        update_settings,
+        "Update shop settings after explicit confirmation.",
+        True,
+    ),
+    "cash_settlement": Tool(
+        "payments.write",
+        RecordInput,
+        lambda db, actor, data: settle_cash(db, actor, data.id),
+        "Record actual receipt of a cash payment after confirmation.",
+        True,
+    ),
+    "payment_refund": Tool(
+        "payments.write",
+        RecordInput,
+        lambda db, actor, data: refund_payment(db, actor, data.id),
+        "Refund a settled Stripe payment after confirmation.",
+        True,
+    ),
+}
+
+
+def execute_tool(
+    db: Session, actor: Principal, name: str, arguments: dict
+) -> dict:
+    """Validate identity, permissions and parameters on every invocation."""
+    tool = TOOLS.get(name)
+    if not tool:
+        raise HTTPException(422, "Unknown tool")
+    actor.require(tool.permission)
+    try:
+        data = tool.schema.model_validate(arguments)
+    except ValidationError as error:
+        raise HTTPException(422, "Invalid tool parameters") from error
+    if tool.sensitive:
+        return request_confirmation(
+            db, actor, name, data.model_dump(mode="json")
+        )
+    return tool.handler(db, actor, data)
+
+
+def confirm_action(db: Session, actor: Principal, record_id: str) -> dict:
+    """Consume exact consent atomically; unavailable as an AI tool."""
+    record = db.get(Confirmation, record_id)
+    if not record or record.principal_id != actor.id:
+        raise HTTPException(404, "Confirmation not found")
+    tool = TOOLS.get(record.action)
+    if not tool:
+        raise HTTPException(409, "Action no longer supported")
+    actor.require(tool.permission)
+    claimed = db.execute(
+        update(Confirmation)
+        .where(
+            Confirmation.id == record.id,
+            Confirmation.consumed.is_(False),
+            Confirmation.expires_at > utcnow(),
+        )
+        .values(consumed=True)
+    )
+    if claimed.rowcount != 1:
+        raise HTTPException(409, "Confirmation expired or already consumed")
+    data = tool.schema.model_validate(record.payload)
+    result = tool.handler(db, actor, data)
+    audit(db, actor.id, "confirmation.execute", record.id)
+    return result
+
+
+def model_tools(actor: Principal) -> list[dict]:
+    """Expose only tools allowed in this principal's current context."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": tool.description,
+                "parameters": tool.schema.model_json_schema(),
+            },
+        }
+        for name, tool in TOOLS.items()
+        if tool.permission in actor.permissions
+    ]
