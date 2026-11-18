@@ -131,3 +131,85 @@ def test_exact_single_use_actor_confirmation(client, headers, product, store):
         assert db.get(Inventory, variant).quantity == 15
 
 
+def test_expired_confirmation_and_session(
+    client, headers, product, store, identities
+):
+    variant = product["variants"][0]["id"]
+    pending = client.patch(
+        f"/api/v1/inventory/{variant}",
+        headers=headers["owner"],
+        json={
+            "variant_id": variant,
+            "delta": 5,
+            "reason": "Restock",
+        },
+    ).json()
+    with store.begin() as db:
+        db.get(Confirmation, pending["id"]).expires_at = utcnow() - timedelta(
+            seconds=1
+        )
+    assert (
+        client.post(
+            f"/api/v1/confirmations/{pending['id']}/confirm",
+            headers=headers["owner"],
+        ).status_code
+        == 409
+    )
+    with store.begin() as db:
+        db.get(
+            AuthSession, digest(identities["owner"]["token"])
+        ).expires_at = utcnow() - timedelta(seconds=1)
+    assert (
+        client.get("/api/v1/auth/me", headers=headers["owner"]).status_code
+        == 401
+    )
+
+
+def test_disabled_users_and_owner_self_protection(
+    client, headers, store, identities
+):
+    owner = identities["owner"]["id"]
+    assert (
+        client.patch(
+            f"/api/v1/staff/{owner}",
+            headers=headers["owner"],
+            json={
+                "role": "staff",
+                "active": False,
+            },
+        ).status_code
+        == 409
+    )
+    with store.begin() as db:
+        db.get(User, identities["manager"]["id"]).active = False
+    assert (
+        client.get("/api/v1/orders", headers=headers["manager"]).status_code
+        == 401
+    )
+
+
+def test_password_validation_never_echoes_secrets(client, headers):
+    secret = "short"
+    result = client.post(
+        "/api/v1/staff",
+        headers=headers["owner"],
+        json={
+            "email": "x@example.test",
+            "name": "X",
+            "password": secret,
+        },
+    )
+    assert result.status_code == 422
+    assert secret not in result.text
+
+
+def test_unauthenticated_private_routes(client):
+    for path in (
+        "/api/v1/orders",
+        "/api/v1/customers",
+        "/api/v1/ai/usage",
+        "/api/v1/settings",
+        "/api/v1/staff",
+        "/api/v1/audit",
+    ):
+        assert client.get(path).status_code == 401
