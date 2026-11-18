@@ -62,35 +62,35 @@ The proposed system connects the React dashboard and WhatsApp integration to sha
 
 ### Deployment
 
-![Deployment diagram for the proposed shopping system](./mermaid-diagram.png)
+![Deployment diagram for the proposed shopping system](./images/mermaid-diagram.png)
 
 ### Customer shopping and ordering
 
-![Sequence diagram for customer shopping and order placement](<./mermaid-diagram (1).png>)
+![Sequence diagram for customer shopping and order placement](<./images/mermaid-diagram (1).png>)
 
 ### Administrator interactions through WhatsApp
 
-![Sequence diagram for an administrator using WhatsApp](<./mermaid-diagram (2).png>)
+![Sequence diagram for an administrator using WhatsApp](<./images/mermaid-diagram (2).png>)
 
 ### AI tool calling
 
-![Sequence diagram for AI agent tool calls](<./mermaid-diagram (3).png>)
+![Sequence diagram for AI agent tool calls](<./images/mermaid-diagram (3).png>)
 
 ### Order lifecycle
 
-![Activity diagram showing the order lifecycle](<./mermaid-diagram (4).png>)
+![Activity diagram showing the order lifecycle](<./images/mermaid-diagram (4).png>)
 
 ### Order status transitions
 
-![State machine diagram showing order status transitions](<./mermaid-diagram (5).png>)
+![State machine diagram showing order status transitions](<./images/mermaid-diagram (5).png>)
 
 ### Core domain model
 
-![Class diagram for the core shopping domain model](<./mermaid-diagram (6).png>)
+![Class diagram for the core shopping domain model](<./images/mermaid-diagram (6).png>)
 
 ### Authentication and authorisation
 
-![Authentication and authorisation flow diagram](<./mermaid-diagram (7).png>)
+![Authentication and authorisation flow diagram](<./images/mermaid-diagram (7).png>)
 
 ## Database design
 
@@ -121,7 +121,7 @@ PostgreSQL is the proposed primary database. Tables are organised around busines
 
 ### Database relationships
 
-![Database relationship diagram for the proposed PostgreSQL schema](<./mermaid-diagram (8).png>)
+![Database relationship diagram for the proposed PostgreSQL schema](<./images/mermaid-diagram (8).png>)
 
 ### Design decisions
 
@@ -158,7 +158,7 @@ Webhook routes are integration endpoints. Incoming events should be verified bef
 
 Use a tool-based architecture: the language model requests backend tools, and business services validate permissions and inputs before executing operations. The model should not directly manipulate the database.
 
-![Proposed tool-based AI agent architecture](./image.png)
+![Proposed tool-based AI agent architecture](./images/image.png)
 
 Deterministic backend logic should handle calculations and transactions. Customer and administrator contexts should share the agent infrastructure while exposing only the tools each user is authorised to use.
 
@@ -195,17 +195,17 @@ API keys must remain server-side and must never be included in the React applica
 
 ## Repository assets
 
-All ten diagram images are stored alongside this README in the repository root and referenced using relative paths. No externally hosted images are required.
+All ten diagram images are stored in the `images/` directory and referenced using relative paths. No externally hosted images are required.
 
 | File | Diagram |
 | --- | --- |
-| [mermaid-diagram.png](./mermaid-diagram.png) | Deployment. |
-| [mermaid-diagram (1).png](<./mermaid-diagram (1).png>) | Customer shopping and ordering. |
-| [mermaid-diagram (2).png](<./mermaid-diagram (2).png>) | WhatsApp administration. |
-| [mermaid-diagram (3).png](<./mermaid-diagram (3).png>) | AI tool calling. |
-| [mermaid-diagram (4).png](<./mermaid-diagram (4).png>) | Order lifecycle. |
-| [mermaid-diagram (5).png](<./mermaid-diagram (5).png>) | Order status transitions. |
-| [mermaid-diagram (6).png](<./mermaid-diagram (6).png>) | Core domain model. |
-| [mermaid-diagram (7).png](<./mermaid-diagram (7).png>) | Authentication and authorisation. |
-| [mermaid-diagram (8).png](<./mermaid-diagram (8).png>) | Database relationships. |
-| [image.png](./image.png) | AI agent architecture. |
+| [mermaid-diagram.png](./images/mermaid-diagram.png) | Deployment. |
+| [mermaid-diagram (1).png](<./images/mermaid-diagram (1).png>) | Customer shopping and ordering. |
+| [mermaid-diagram (2).png](<./images/mermaid-diagram (2).png>) | WhatsApp administration. |
+| [mermaid-diagram (3).png](<./images/mermaid-diagram (3).png>) | AI tool calling. |
+| [mermaid-diagram (4).png](<./images/mermaid-diagram (4).png>) | Order lifecycle. |
+| [mermaid-diagram (5).png](<./images/mermaid-diagram (5).png>) | Order status transitions. |
+| [mermaid-diagram (6).png](<./images/mermaid-diagram (6).png>) | Core domain model. |
+| [mermaid-diagram (7).png](<./images/mermaid-diagram (7).png>) | Authentication and authorisation. |
+| [mermaid-diagram (8).png](<./images/mermaid-diagram (8).png>) | Database relationships. |
+| [image.png](./images/image.png) | AI agent architecture. |
