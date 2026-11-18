@@ -221,3 +221,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Application dependencies, local data and build outputs
+node_modules/
+*.tsbuildinfo
+backend/*.db
+backend/uploads/
+backend/.pytest-tmp/
+frontend/dist/
+backups/
+.preview/
+!.env.example
