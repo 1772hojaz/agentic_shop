@@ -166,3 +166,182 @@ class StockMovement(Record, Base):
     actor_id: Mapped[str] = mapped_column(String(36))
 
 
+class Cart(Record, Base):
+    """One reusable shopping cart per customer."""
+
+    __tablename__ = "carts"
+    customer_id: Mapped[str] = mapped_column(
+        ForeignKey("customers.id"), unique=True
+    )
+
+
+class CartItem(Base):
+    """Positive product quantity in a personal cart."""
+
+    __tablename__ = "cart_items"
+    __table_args__ = (CheckConstraint("quantity > 0"),)
+    cart_id: Mapped[str] = mapped_column(
+        ForeignKey("carts.id"), primary_key=True
+    )
+    variant_id: Mapped[str] = mapped_column(
+        ForeignKey("product_variants.id"), primary_key=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer)
+
+
+class Order(Record, Base):
+    """Order fulfillment state, separate from provider payment state."""
+
+    __tablename__ = "orders"
+    customer_id: Mapped[str] = mapped_column(
+        ForeignKey("customers.id"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(30), default="pending_payment")
+    total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(3))
+    delivery: Mapped[dict] = mapped_column(JSON, default=dict)
+    checkout_key: Mapped[str] = mapped_column(String(100), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class OrderItem(Record, Base):
+    """Immutable name, option and price snapshot at checkout."""
+
+    __tablename__ = "order_items"
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
+    variant_id: Mapped[str] = mapped_column(ForeignKey("product_variants.id"))
+    name: Mapped[str] = mapped_column(String(250))
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    quantity: Mapped[int] = mapped_column(Integer)
+
+
+class Payment(Record, Base):
+    """A payment attempt that never stores customer payment secrets."""
+
+    __tablename__ = "payments"
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id"), index=True)
+    method: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    reference: Mapped[str | None] = mapped_column(String(200), unique=True)
+    checkout_url: Mapped[str] = mapped_column(Text, default="")
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(3))
+    provider_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    provider_error: Mapped[str] = mapped_column(String(200), default="")
+
+
+class PaymentEvent(Base):
+    """Unique verified provider event used for replay prevention."""
+
+    __tablename__ = "payment_events"
+    id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    payment_id: Mapped[str] = mapped_column(ForeignKey("payments.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Conversation(Record, Base):
+    """A private channel history tied to one principal."""
+
+    __tablename__ = "conversations"
+    principal_id: Mapped[str] = mapped_column(String(36), index=True)
+    channel: Mapped[str] = mapped_column(String(20), default="web")
+    context: Mapped[str] = mapped_column(String(20))
+
+
+class Message(Record, Base):
+    """Bounded textual history and external delivery status."""
+
+    __tablename__ = "messages"
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)
+    external_id: Mapped[str | None] = mapped_column(String(200), unique=True)
+    status: Mapped[str] = mapped_column(String(30), default="received")
+
+
+class AgentSession(Record, Base):
+    """Summary of older messages scoped to one conversation."""
+
+    __tablename__ = "agent_sessions"
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id"), unique=True
+    )
+    summary: Mapped[str] = mapped_column(Text, default="")
+
+
+class AIUsage(Record, Base):
+    """Provider-reported tokens and configured estimated spend."""
+
+    __tablename__ = "ai_usage"
+    principal_id: Mapped[str] = mapped_column(String(36), index=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id")
+    )
+    model: Mapped[str] = mapped_column(String(100))
+    input_tokens: Mapped[int] = mapped_column(Integer)
+    output_tokens: Mapped[int] = mapped_column(Integer)
+    estimated_cost: Mapped[Decimal] = mapped_column(Numeric(16, 8))
+
+
+class Confirmation(Record, Base):
+    """Single-use consent bound to an exact action and principal."""
+
+    __tablename__ = "confirmations"
+    principal_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(60))
+    payload: Mapped[dict] = mapped_column(JSON)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    consumed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Notification(Record, Base):
+    """Durable outbound delivery with bounded retry state."""
+
+    __tablename__ = "notifications"
+    recipient: Mapped[str] = mapped_column(String(30))
+    content: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    error: Mapped[str] = mapped_column(String(200), default="")
+    external_id: Mapped[str | None] = mapped_column(String(200), unique=True)
+
+
+class WebhookJob(Record, Base):
+    """Durable deduplicated incoming Meta message."""
+
+    __tablename__ = "webhook_jobs"
+    external_id: Mapped[str] = mapped_column(String(200), unique=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    error: Mapped[str] = mapped_column(String(200), default="")
+
+
+class AuditLog(Record, Base):
+    """Non-secret administrative action history."""
+
+    __tablename__ = "audit_logs"
+    actor_id: Mapped[str] = mapped_column(String(36), index=True)
+    action: Mapped[str] = mapped_column(String(80))
+    entity_id: Mapped[str] = mapped_column(String(100))
+
+
+class ShopSetting(Base):
+    """Non-secret runtime settings for the shop and agent."""
+
+    __tablename__ = "shop_settings"
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON)
+
+
+class LoginAttempt(Base):
+    """Database-backed rate limit window shared across restarts."""
+
+    __tablename__ = "login_attempts"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    reset_at: Mapped[datetime] = mapped_column(DateTime)
