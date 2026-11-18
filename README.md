@@ -2,7 +2,11 @@
 
 An AI-assisted shopping system designed to connect customers and shop administrators through WhatsApp, with a React dashboard for desktop administration.
 
-**Project status:** architecture and requirements planning. This repository contains the system design and supporting diagrams. Application code and setup instructions are not yet included; the features, endpoints, and tables below describe the proposed implementation.
+**Project status:** an integrated implementation is now included in `backend/` and `frontend/`. It provides a FastAPI application, PostgreSQL migrations, a React administration dashboard, one permission-aware AI orchestrator, verified WhatsApp webhooks, durable message delivery, Stripe checkout/refunds, and cash receipt tracking. Live integrations require your provider credentials and HTTPS configuration.
+
+Start with the [local setup and deployment guide](docs/DEPLOYMENT.md). Review the [implementation plan](docs/IMPLEMENTATION_PLAN.md), [API and security boundaries](docs/API_AND_SECURITY.md), and [editable Mermaid diagrams](docs/DIAGRAMS.md).
+
+The architecture below explains the system's design. Market-specific mobile-money/bank adapters, parameterized WhatsApp templates, and attachment-content interpretation are not implemented. Production PostgreSQL concurrency, provider credentials, and the 1 GB VPS workload must be validated in your deployment environment.
 
 ## Contents
 
