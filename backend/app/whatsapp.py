@@ -135,3 +135,111 @@ def sender_principal(db, phone: str) -> Principal:
     return Principal(customer.id, "customer", CUSTOMER_PERMISSIONS)
 
 
+def process_message(db, payload: dict) -> None:
+    """Handle explicit human commands before entering the model loop."""
+    phone = payload["from"]
+    text = incoming_text(payload)
+    if text.startswith("PAIR "):
+        answer = pair_sender(db, phone, text[5:].strip())
+    elif text == "UNPAIR":
+        db.execute(
+            update(AdminBinding)
+            .where(AdminBinding.phone == phone)
+            .values(expires_at=utcnow())
+        )
+        answer = "Administrator session ended."
+    else:
+        actor = sender_principal(db, phone)
+        answer = respond(db, actor, text)
+    db.add(
+        Notification(
+            recipient=phone,
+            content={"type": "text", "text": {"body": answer}},
+        )
+    )
+
+
+def incoming_text(payload: dict) -> str:
+    """Interpret text, interactive replies and attachment metadata safely."""
+    kind = payload.get("type")
+    if kind == "text":
+        return payload.get("text", {}).get("body", "")[:4000]
+    if kind == "interactive":
+        reply = payload.get("interactive", {})
+        selection = reply.get("button_reply", reply.get("list_reply", {}))
+        return selection.get("id", "")[:4000]
+    if kind in {"image", "document"}:
+        attachment = payload.get(kind, {})
+        caption = attachment.get("caption", "")
+        return (
+            f"Customer sent a {kind} attachment. Caption: {caption[:1500]}. "
+            "The attachment contents have not been inspected. Ask for a "
+            "text description when needed; do not infer its contents."
+        )
+    return "Please explain which message types this shopping service supports."
+
+
+def respond(db, actor, text: str) -> str:
+    """Keep human confirmations outside the set of model-callable tools."""
+    if text.startswith("CONFIRM "):
+        confirm_action(db, actor, text[8:].strip())
+        return "The confirmed operation completed successfully."
+    conversation = db.scalar(
+        select(Conversation)
+        .where(
+            Conversation.principal_id == actor.id,
+            Conversation.channel == "whatsapp",
+            Conversation.context == actor.context,
+        )
+        .order_by(Conversation.created_at.desc())
+    )
+    try:
+        result = chat(
+            db,
+            actor,
+            ChatInput(
+                message=text or "Hello",
+                conversation_id=conversation.id if conversation else None,
+            ),
+            "whatsapp",
+        )
+    except HTTPException as error:
+        if error.status_code in {429, 502, 503}:
+            return str(error.detail) + ". Please try again later."
+        raise
+    answer = result["message"]
+    for item in result["confirmations"]:
+        answer += f"\nTo approve {item['action']}, send CONFIRM {item['id']}"
+    return answer[:4000]
+
+
+def send_message(recipient: str, content: dict) -> str:
+    """Deliver a real message using the official Meta Cloud API."""
+    settings = get_settings()
+    required = (
+        settings.meta_access_token,
+        settings.meta_phone_id,
+        settings.meta_graph_version,
+    )
+    if not all(required):
+        raise HTTPException(503, "WhatsApp delivery is not configured")
+    url = (
+        "https://graph.facebook.com/"
+        + settings.meta_graph_version
+        + "/"
+        + settings.meta_phone_id
+        + "/messages"
+    )
+    try:
+        response = httpx.post(
+            url,
+            headers={
+                "Authorization": "Bearer " + (settings.meta_access_token)
+            },
+            json={"messaging_product": "whatsapp", "to": recipient, **content},
+            timeout=20,
+        )
+        response.raise_for_status()
+        return response.json()["messages"][0]["id"]
+    except (httpx.HTTPError, KeyError) as error:
+        raise HTTPException(502, "WhatsApp delivery failed") from error
