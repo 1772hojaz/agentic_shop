@@ -71,3 +71,69 @@ def shop_counts(db: Session) -> dict:
     }
 
 
+def best_sellers(db: Session, since) -> list[dict]:
+    """Aggregate fulfilled or paid orders rather than abandoned carts."""
+    rows = db.execute(
+        select(
+            OrderItem.name,
+            func.sum(OrderItem.quantity).label("units"),
+            func.sum(OrderItem.quantity * OrderItem.unit_price).label("sales"),
+        )
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(
+            Order.created_at >= since,
+            Order.id.in_(
+                select(Payment.order_id).where(Payment.status == "paid")
+            ),
+        )
+        .group_by(OrderItem.name)
+        .order_by(func.sum(OrderItem.quantity).desc())
+        .limit(10)
+    ).all()
+    return [dict(row._mapping) for row in rows]
+
+
+def category_sales(db: Session, since) -> list[dict]:
+    """Group paid order snapshots by their catalogue category."""
+    rows = db.execute(
+        select(
+            func.coalesce(Category.name, "Uncategorised").label("category"),
+            func.sum(OrderItem.quantity).label("units"),
+            func.sum(OrderItem.quantity * OrderItem.unit_price).label("sales"),
+        )
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Variant, Variant.id == OrderItem.variant_id)
+        .join(Product, Product.id == Variant.product_id)
+        .outerjoin(Category, Category.id == Product.category_id)
+        .where(
+            Order.created_at >= since,
+            Order.id.in_(
+                select(Payment.order_id).where(Payment.status == "paid")
+            ),
+        )
+        .group_by(Category.name)
+        .limit(100)
+    ).all()
+    return [dict(row._mapping) for row in rows]
+
+
+def customer_activity(db: Session, since) -> list[dict]:
+    """Aggregate purchasing activity without counting unpaid reservations."""
+    rows = db.execute(
+        select(
+            Customer.name,
+            func.count(Order.id).label("orders"),
+            func.sum(Order.total).label("spend"),
+        )
+        .join(Order, Order.customer_id == Customer.id)
+        .where(
+            Order.created_at >= since,
+            Order.id.in_(
+                select(Payment.order_id).where(Payment.status == "paid")
+            ),
+        )
+        .group_by(Customer.id, Customer.name)
+        .order_by(func.sum(Order.total).desc())
+        .limit(20)
+    ).all()
+    return [dict(row._mapping) for row in rows]
