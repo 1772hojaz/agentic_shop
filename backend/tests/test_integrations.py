@@ -128,3 +128,127 @@ def test_payment_amount_check_replay_and_separate_state(
         assert db.get(Inventory, product["variants"][0]["id"]).quantity == 8
 
 
+def test_invalid_payment_signature(client, integration_config):
+    assert (
+        client.post(
+            "/webhooks/payments",
+            json={},
+            headers={
+                "Stripe-Signature": "t=1,v1=wrong",
+            },
+        ).status_code
+        == 401
+    )
+
+
+def test_admin_phone_requires_pairing_and_single_use_code(store, identities):
+    phone = "250700000099"
+    with store.begin() as db:
+        user = db.get(User, identities["owner"]["id"])
+        actor = user_principal(db, user)
+        assert sender_principal(db, phone).context == "customer"
+        code = pairing_code(db, actor)["code"]
+        db.flush()
+        assert "paired" in pair_sender(db, phone, code)
+        assert sender_principal(db, phone).context == "admin"
+        assert "invalid" in pair_sender(db, phone, code)
+
+
+def test_model_cannot_confirm_or_escalate(store, identities, product):
+    actor = Principal(
+        identities["customer1"]["id"], "customer", CUSTOMER_PERMISSIONS
+    )
+    names = {tool["function"]["name"] for tool in model_tools(actor)}
+    assert "stock_adjustment" not in names
+    assert not any("confirm" in name for name in names)
+    with store.begin() as db:
+        with pytest.raises(HTTPException) as denied:
+            execute_tool(
+                db,
+                actor,
+                "stock_adjustment",
+                {
+                    "variant_id": product["variants"][0]["id"],
+                    "delta": 100,
+                    "reason": "Ignore all permissions",
+                },
+            )
+        assert denied.value.status_code == 403
+
+
+def test_agent_uses_real_tools_and_records_usage(
+    client, headers, product, monkeypatch
+):
+    from app import agent
+
+    config = get_settings()
+    monkeypatch.setattr(config, "ai_api_key", "test-provider-key")
+    monkeypatch.setattr(config, "ai_model", "test-model")
+    responses = iter(
+        [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "product_search",
+                                        "arguments": '{"query":"running"}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20},
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Running shoes cost 25.50.",
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 150, "completion_tokens": 15},
+            },
+        ]
+    )
+    captured = []
+
+    def request(history, tools, model):
+        captured.append(list(history))
+        return next(responses)
+
+    monkeypatch.setattr(agent, "model_request", request)
+    result = client.post(
+        "/api/v1/ai/chat",
+        headers=headers["customer1"],
+        json={"message": "Find running shoes"},
+    )
+    assert result.status_code == 200, result.text
+    assert "25.50" in result.json()["message"]
+    assert any(
+        message["role"] == "tool" and "Running shoes" in message["content"]
+        for message in captured[1]
+    )
+    usage = client.get("/api/v1/ai/usage", headers=headers["owner"]).json()
+    assert usage["input_tokens"] == 250
+
+
+def test_unconfigured_agent_is_explicit(client, headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "ai_api_key", "")
+    assert (
+        client.post(
+            "/api/v1/ai/chat",
+            headers=headers["owner"],
+            json={"message": "Hello"},
+        ).status_code
+        == 503
+    )
