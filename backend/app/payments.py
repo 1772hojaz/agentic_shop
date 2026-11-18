@@ -159,3 +159,109 @@ def payment_event(db: Session, event: dict) -> dict:
     return {"received": True}
 
 
+def refund_event(db, event: dict) -> dict:
+    """Track asynchronous provider refunds using signed metadata."""
+    data = event.get("data", {}).get("object", {})
+    payment_id = data.get("metadata", {}).get("payment_id", "")
+    payment = db.scalar(
+        select(Payment).where(Payment.id == payment_id).with_for_update()
+    )
+    if not payment:
+        raise HTTPException(422, "Unknown refund payment")
+    if db.get(PaymentEvent, event["id"]):
+        return {"received": True, "duplicate": True}
+    validate_event_amount(
+        payment,
+        {
+            "amount_total": data.get("amount"),
+            "currency": data.get("currency"),
+        },
+    )
+    db.add(PaymentEvent(id=event["id"], payment_id=payment.id))
+    if data.get("status") == "succeeded":
+        order = db.scalar(
+            select(Order).where(Order.id == payment.order_id).with_for_update()
+        )
+        if order.status == "refund_pending":
+            transition(db, order, "refunded", "stripe")
+        payment.status = "refunded"
+    elif (
+        data.get("status") in {"failed", "canceled"}
+        and payment.status != "refunded"
+    ):
+        payment.status = "paid"
+        audit(db, "stripe", "refund.failed", payment.id)
+    return {"received": True}
+
+
+def validate_event_amount(payment: Payment, data: dict) -> None:
+    """Reject callbacks that disagree with the server's monetary snapshot."""
+    multiplier = 1 if payment.currency == "RWF" else 100
+    amount = Decimal(str(data.get("amount_total", -1)))
+    if amount != payment.amount * multiplier:
+        raise HTTPException(422, "Payment amount mismatch")
+    if data.get("currency", "").upper() != payment.currency:
+        raise HTTPException(422, "Payment currency mismatch")
+
+
+def settle_payment(db: Session, payment: Payment, actor_id: str) -> None:
+    """Record real settlement, flagging late and duplicate payments."""
+    if payment.status in {"paid", "refunded", "refund_pending"}:
+        return
+    order = db.scalar(
+        select(Order).where(Order.id == payment.order_id).with_for_update()
+    )
+    payment.status = "paid"
+    if order.status == "pending_payment":
+        transition(db, order, "paid", actor_id)
+    elif order.status in {"expired", "cancelled"}:
+        order.status = "refund_pending"
+        audit(db, actor_id, "payment.late_refund_required", order.id)
+    else:
+        audit(db, actor_id, "payment.review_settlement", payment.id)
+    audit(db, actor_id, "payment.paid", payment.id)
+
+
+def settle_cash(db: Session, actor: Principal, payment_id: str) -> dict:
+    """Record staff-confirmed receipt of cash, never checkout intent."""
+    actor.require("payments.write")
+    payment = db.scalar(
+        select(Payment).where(Payment.id == payment_id).with_for_update()
+    )
+    if not payment or payment.method != "cash":
+        raise HTTPException(404, "Cash payment not found")
+    settle_payment(db, payment, actor.id)
+    return serialize(payment)
+
+
+def refund_payment(db: Session, actor: Principal, payment_id: str) -> dict:
+    """Refund a settled Stripe payment through the provider API."""
+    actor.require("payments.write")
+    payment = get_record(db, Payment, payment_id)
+    order = get_record(db, Order, payment.order_id)
+    if payment.method != "stripe" or payment.status != "paid":
+        raise HTTPException(409, "Only settled Stripe payments are refundable")
+    if order.status != "refund_pending":
+        raise HTTPException(409, "Move the order to refund pending first")
+    settings = get_settings()
+    try:
+        response = httpx.get(
+            "https://api.stripe.com/v1/checkout/sessions/" + payment.reference,
+            auth=(settings.stripe_secret_key, ""),
+            timeout=20,
+        )
+        response.raise_for_status()
+        intent = response.json()["payment_intent"]
+    except (httpx.HTTPError, KeyError) as error:
+        raise HTTPException(502, "Cannot retrieve payment") from error
+    result = stripe_request(
+        "refunds",
+        {"payment_intent": intent, "metadata[payment_id]": payment.id},
+        "refund-" + payment.id,
+    )
+    payment.status = (
+        "refunded" if result["status"] == "succeeded" else ("refund_pending")
+    )
+    if payment.status == "refunded":
+        transition(db, order, "refunded", actor.id)
+    return serialize(payment)
