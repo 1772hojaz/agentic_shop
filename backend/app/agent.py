@@ -132,3 +132,116 @@ def model_request(history: list, tools: list, model: str) -> dict:
         raise HTTPException(502, "AI provider unavailable") from error
 
 
+def track_usage(db, actor, conversation, response) -> None:
+    """Persist actual provider usage and configured per-million cost."""
+    settings = agent_config(db)
+    usage = response.get("usage", {})
+    incoming = usage.get("prompt_tokens", 0)
+    outgoing = usage.get("completion_tokens", 0)
+    cost = (
+        incoming * settings.input_price + (outgoing * settings.output_price)
+    ) / 1000000
+    db.add(
+        AIUsage(
+            principal_id=actor.id,
+            conversation_id=conversation.id,
+            model=settings.model,
+            input_tokens=incoming,
+            output_tokens=outgoing,
+            estimated_cost=Decimal(str(cost)),
+        )
+    )
+    db.flush()
+
+
+def check_budget(db, actor) -> None:
+    """Stop requests once a principal's daily token budget is exhausted."""
+    today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    tokens = db.scalar(
+        select(
+            func.coalesce(
+                func.sum(AIUsage.input_tokens + AIUsage.output_tokens), 0
+            )
+        ).where(AIUsage.principal_id == actor.id, AIUsage.created_at >= today)
+    )
+    if tokens >= agent_config(db).daily_tokens:
+        raise HTTPException(429, "Daily AI budget exhausted")
+
+
+def run_tools(db, actor, calls, history, pending) -> None:
+    """Execute validated calls with isolated failures and bounded output."""
+    if len(calls) > 8:
+        raise HTTPException(422, "Model requested too many tools")
+    for call in calls:
+        function = call.get("function", {})
+        try:
+            arguments = json.loads(function.get("arguments", "{}"))
+            with db.begin_nested():
+                result = execute_tool(db, actor, function["name"], arguments)
+            if isinstance(result, dict) and result.get(
+                "confirmation_required"
+            ):
+                pending.append(result)
+        except (HTTPException, ValueError, TypeError, KeyError) as error:
+            result = {"error": getattr(error, "detail", "Invalid tool call")}
+        history.append(
+            {
+                "role": "tool",
+                "tool_call_id": call["id"],
+                "content": json.dumps(jsonable_encoder(result))[:24000],
+            }
+        )
+
+
+def chat(
+    db: Session, actor: Principal, data: ChatInput, channel: str = "web"
+) -> dict:
+    """Run the same bounded orchestration loop for both operating contexts."""
+    actor.require("ai.chat")
+    settings = get_settings()
+    if not settings.ai_api_key or not agent_config(db).model:
+        raise HTTPException(503, "External AI model is not configured")
+    check_budget(db, actor)
+    conversation = get_conversation(db, actor, data.conversation_id, channel)
+    db.add(
+        Message(
+            conversation_id=conversation.id, role="user", content=data.message
+        )
+    )
+    db.flush()
+    answer, pending = orchestrate(db, actor, conversation)
+    db.add(
+        Message(
+            conversation_id=conversation.id, role="assistant", content=answer
+        )
+    )
+    return {
+        "conversation_id": conversation.id,
+        "message": answer,
+        "confirmations": pending,
+    }
+
+
+def orchestrate(db, actor, conversation) -> tuple[str, list]:
+    """Keep bounded model/tool iterations separate from history persistence."""
+    history = conversation_history(db, conversation, actor)
+    pending = []
+    answer = "The tool limit was reached. Please narrow your request."
+    config = agent_config(db)
+    for iteration in range(config.max_iterations):
+        try:
+            check_budget(db, actor)
+            response = model_request(history, model_tools(actor), config.model)
+        except HTTPException as error:
+            if iteration == 0:
+                raise
+            answer = str(error.detail) + ". Review any pending actions."
+            break
+        track_usage(db, actor, conversation, response)
+        message = response["choices"][0]["message"]
+        history.append(message)
+        if not message.get("tool_calls"):
+            answer = message.get("content") or "Please rephrase your request."
+            break
+        run_tools(db, actor, message["tool_calls"], history, pending)
+    return answer, pending
