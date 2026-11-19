@@ -12,3 +12,16 @@ def test_login_rejects_identity_overrides():
             Login(
                 email="a@example.test", password="secret", **{field: "owner"}
             )
+
+
+def test_staff_password_boundaries():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import StaffInput
+
+    for size in (11, 129):
+        with pytest.raises(ValidationError):
+            StaffInput(email="a@b.test", name="Staff", password="x" * size)
+    for size in (12, 128):
+        assert StaffInput(email="a@b.test", name="Staff", password="x" * size)
