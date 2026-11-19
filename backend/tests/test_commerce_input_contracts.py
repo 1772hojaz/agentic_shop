@@ -71,3 +71,18 @@ def test_product_image_schemes():
             assert (
                 model(name="Product", image_url=url, **extra).image_url == url
             )
+
+
+def test_stock_adjustment_boundaries():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import StockInput
+
+    for delta in (0, -1000001, 1000001):
+        with pytest.raises(ValidationError):
+            StockInput(variant_id="v", delta=delta, reason="Restock")
+    for reason in ("  ", "ab", "x" * 201):
+        with pytest.raises(ValidationError):
+            StockInput(variant_id="v", delta=1, reason=reason)
+    assert StockInput(variant_id="v", delta=-1000000, reason="Removal")
