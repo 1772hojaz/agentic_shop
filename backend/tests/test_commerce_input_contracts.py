@@ -86,3 +86,18 @@ def test_stock_adjustment_boundaries():
         with pytest.raises(ValidationError):
             StockInput(variant_id="v", delta=1, reason=reason)
     assert StockInput(variant_id="v", delta=-1000000, reason="Removal")
+
+
+def test_cart_quantity_boundaries():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import CartInput
+
+    for quantity in (-1, 1001):
+        with pytest.raises(ValidationError):
+            CartInput(variant_id="v", quantity=quantity)
+    for quantity in (0, 1000):
+        assert (
+            CartInput(variant_id="v", quantity=quantity).quantity == quantity
+        )
