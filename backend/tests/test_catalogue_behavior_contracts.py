@@ -52,3 +52,18 @@ def test_catalogue_offset_preserves_total(client, product):
     response = client.get("/api/v1/products", params={"offset": 1, "limit": 1})
     assert response.status_code == 200
     assert response.json() == {"items": [], "total": 1}
+
+
+def test_cart_quantity_replaces_existing_line(client, headers, product):
+    variant = product["variants"][0]["id"]
+    for quantity in (2, 3):
+        response = client.put(
+            "/api/v1/carts/me/items",
+            headers=headers["customer1"],
+            json={"variant_id": variant, "quantity": quantity},
+        )
+        assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["quantity"] == 3
+    assert float(response.json()["total"]) == 76.5
