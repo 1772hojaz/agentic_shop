@@ -101,3 +101,18 @@ def test_cart_quantity_boundaries():
         assert (
             CartInput(variant_id="v", quantity=quantity).quantity == quantity
         )
+
+
+def test_checkout_contract():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import Checkout
+
+    for key in ("x" * 15, "x" * 101):
+        with pytest.raises(ValidationError):
+            Checkout(checkout_key=key)
+    with pytest.raises(ValidationError):
+        Checkout(checkout_key="x" * 16, method="teleport")
+    for method in ("collection", "delivery"):
+        assert Checkout(checkout_key="x" * 100, method=method)
