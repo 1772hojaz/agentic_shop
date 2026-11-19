@@ -67,3 +67,26 @@ def test_cart_quantity_replaces_existing_line(client, headers, product):
     assert len(items) == 1
     assert items[0]["quantity"] == 3
     assert float(response.json()["total"]) == 76.5
+
+
+def test_archived_cart_item_can_be_removed(client, headers, product, store):
+    from app.models import Product
+
+    payload = {"variant_id": product["variants"][0]["id"], "quantity": 1}
+    assert (
+        client.put(
+            "/api/v1/carts/me/items",
+            headers=headers["customer1"],
+            json=payload,
+        ).status_code
+        == 200
+    )
+    with store.begin() as db:
+        db.get(Product, product["id"]).active = False
+    payload["quantity"] = 0
+    response = client.put(
+        "/api/v1/carts/me/items", headers=headers["customer1"], json=payload
+    )
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert float(response.json()["total"]) == 0
