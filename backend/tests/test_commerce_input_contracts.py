@@ -147,3 +147,16 @@ def test_payment_method_contract():
             PaymentInput(order_id="o", method=method)
     for method in ("cash", "stripe"):
         assert PaymentInput(order_id="o", method=method).method == method
+
+
+def test_search_criteria_limits():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import Search
+
+    with pytest.raises(ValidationError):
+        Search(query="x" * 161)
+    with pytest.raises(ValidationError):
+        Search(max_price="-0.01")
+    assert Search(query="  shoes  ", max_price=0).query == "shoes"
