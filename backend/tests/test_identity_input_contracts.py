@@ -64,3 +64,15 @@ def test_chat_message_boundaries():
         with pytest.raises(ValidationError):
             ChatInput(message=message)
     assert ChatInput(message="x" * 4000).message == "x" * 4000
+
+
+def test_notification_text_boundaries():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import NotificationInput
+
+    for text in ("", "  ", "x" * 4001):
+        with pytest.raises(ValidationError):
+            NotificationInput(customer_id="customer", text=text)
+    assert NotificationInput(customer_id="customer", text="x" * 4000)
