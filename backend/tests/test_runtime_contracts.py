@@ -17,3 +17,23 @@ def test_production_requires_postgres(monkeypatch):
                 cookie_secure=True,
                 public_url="https://shop.example",
             )
+
+
+def test_production_requires_secure_transport():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    for secure, url in (
+        (False, "https://shop.example"),
+        (True, "http://shop.example"),
+    ):
+        with pytest.raises(ValidationError, match="HTTPS secure cookies"):
+            Settings(
+                _env_file=None,
+                environment="production",
+                database_url="postgresql://localhost/shop",
+                cookie_secure=secure,
+                public_url=url,
+            )
