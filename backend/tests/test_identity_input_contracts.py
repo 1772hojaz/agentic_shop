@@ -76,3 +76,15 @@ def test_notification_text_boundaries():
         with pytest.raises(ValidationError):
             NotificationInput(customer_id="customer", text=text)
     assert NotificationInput(customer_id="customer", text="x" * 4000)
+
+
+def test_notification_kinds():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import NotificationInput
+
+    for kind in ("text", "image", "document", "interactive", "template"):
+        assert NotificationInput(customer_id="c", text="Hello", kind=kind)
+    with pytest.raises(ValidationError):
+        NotificationInput(customer_id="c", text="Hello", kind="executable")
