@@ -111,3 +111,14 @@ def test_http_security_headers(client):
         response = client.get(path)
         for key, value in expected.items():
             assert response.headers[key] == value
+
+
+def test_http_body_size_boundary(client):
+    for length in (str(6 * 1024 * 1024 + 1), "invalid", "-1"):
+        response = client.get("/health", headers={"Content-Length": length})
+        assert response.status_code == 413
+        assert response.json() == {"detail": "Request too large"}
+    assert (
+        client.get("/health", headers={"Content-Length": "0"}).status_code
+        == 200
+    )
