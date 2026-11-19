@@ -62,3 +62,20 @@ def test_production_ai_transport():
         public_url="https://shop.example",
         ai_api_url="https://model.test",
     )
+
+
+def test_agent_work_limits():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import AgentConfig
+
+    for field, values in (
+        ("daily_tokens", (999, 1000001)),
+        ("max_iterations", (0, 7)),
+    ):
+        for value in values:
+            with pytest.raises(ValidationError):
+                AgentConfig(**{field: value})
+    assert AgentConfig(daily_tokens=1000, max_iterations=1)
+    assert AgentConfig(daily_tokens=1000000, max_iterations=6)
