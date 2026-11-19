@@ -90,3 +90,29 @@ def test_archived_cart_item_can_be_removed(client, headers, product, store):
     assert response.status_code == 200
     assert response.json()["items"] == []
     assert float(response.json()["total"]) == 0
+
+
+def test_unavailable_cart_change_keeps_previous_quantity(
+    client, headers, product
+):
+    payload = {"variant_id": product["variants"][0]["id"], "quantity": 2}
+    assert (
+        client.put(
+            "/api/v1/carts/me/items",
+            headers=headers["customer1"],
+            json=payload,
+        ).status_code
+        == 200
+    )
+    payload["quantity"] = 11
+    assert (
+        client.put(
+            "/api/v1/carts/me/items",
+            headers=headers["customer1"],
+            json=payload,
+        ).status_code
+        == 409
+    )
+    cart = client.get("/api/v1/carts/me", headers=headers["customer1"]).json()
+    assert len(cart["items"]) == 1
+    assert cart["items"][0]["quantity"] == 2
