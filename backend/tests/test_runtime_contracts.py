@@ -92,3 +92,9 @@ def test_agent_prices_must_be_finite():
             with pytest.raises(ValidationError):
                 AgentConfig(**{field: value})
         assert AgentConfig(**{field: 10000})
+
+
+def test_liveness_is_public_and_minimal(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
