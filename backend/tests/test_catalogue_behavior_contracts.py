@@ -19,3 +19,18 @@ def test_catalogue_search_case_insensitivity(client, product):
         assert [item["id"] for item in response.json()["items"]] == [
             product["id"]
         ]
+
+
+def test_catalogue_percent_is_literal(client, product, store):
+    from app.models import Product
+
+    assert (
+        client.get("/api/v1/products", params={"query": "%"}).json()["total"]
+        == 0
+    )
+    with store.begin() as db:
+        db.get(Product, product["id"]).name = "100% cotton"
+    assert (
+        client.get("/api/v1/products", params={"query": "%"}).json()["total"]
+        == 1
+    )
