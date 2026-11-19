@@ -46,3 +46,9 @@ def test_catalogue_price_ceiling(client, product):
     response = client.get("/api/v1/products", params={"max_price": "25.50"})
     assert response.status_code == 200
     assert response.json()["items"][0]["id"] == product["id"]
+
+
+def test_catalogue_offset_preserves_total(client, product):
+    response = client.get("/api/v1/products", params={"offset": 1, "limit": 1})
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 1}
