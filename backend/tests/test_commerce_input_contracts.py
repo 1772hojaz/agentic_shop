@@ -116,3 +116,21 @@ def test_checkout_contract():
         Checkout(checkout_key="x" * 16, method="teleport")
     for method in ("collection", "delivery"):
         assert Checkout(checkout_key="x" * 100, method=method)
+
+
+def test_staff_cannot_submit_payment_states():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import OrderStatus
+
+    for status in (
+        "paid",
+        "refunded",
+        "expired",
+        "pending_payment",
+        "unknown",
+    ):
+        with pytest.raises(ValidationError):
+            OrderStatus(order_id="o", status=status)
+    assert OrderStatus(order_id="o", status="processing")
