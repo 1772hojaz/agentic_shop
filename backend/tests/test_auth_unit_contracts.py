@@ -23,3 +23,17 @@ def test_wrong_password_is_rejected():
         "correct-password ",
     ):
         assert not verify_password(password, stored)
+
+
+def test_malformed_password_hashes_fail_closed():
+    from app.auth import verify_password
+
+    for stored in (
+        "",
+        "plain-text",
+        "scrypt$missing",
+        "scrypt$a$b$c",
+        "md5$a$b",
+        "scrypt$salt$invalid",
+    ):
+        assert not verify_password("password", stored)
