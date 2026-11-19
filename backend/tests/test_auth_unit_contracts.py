@@ -69,3 +69,14 @@ def test_manager_defaults_exclude_owner_powers():
     assert "staff.write" not in grants
     assert "settings.write" not in grants
     assert grants == PERMISSIONS - {"staff.write", "settings.write"}
+
+
+def test_staff_defaults_are_operational_only():
+    from app.auth import role_defaults
+
+    assert role_defaults("staff") == {
+        "products.read",
+        "orders.read",
+        "orders.write",
+        "ai.chat",
+    }
