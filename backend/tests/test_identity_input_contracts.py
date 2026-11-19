@@ -88,3 +88,19 @@ def test_notification_kinds():
         assert NotificationInput(customer_id="c", text="Hello", kind=kind)
     with pytest.raises(ValidationError):
         NotificationInput(customer_id="c", text="Hello", kind="executable")
+
+
+def test_shop_instruction_limits():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import SettingInput
+
+    for field, limit in (
+        ("agent_instructions", 2000),
+        ("support_message", 1000),
+        ("delivery_instructions", 1000),
+    ):
+        assert SettingInput(**{field: "x" * limit})
+        with pytest.raises(ValidationError):
+            SettingInput(**{field: "x" * (limit + 1)})
