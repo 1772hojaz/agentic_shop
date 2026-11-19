@@ -98,3 +98,16 @@ def test_liveness_is_public_and_minimal(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_http_security_headers(client):
+    expected = {
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY",
+        "referrer-policy": "same-origin",
+        "cache-control": "no-store",
+    }
+    for path in ("/health", "/api/v1/staff", "/does-not-exist"):
+        response = client.get(path)
+        for key, value in expected.items():
+            assert response.headers[key] == value
