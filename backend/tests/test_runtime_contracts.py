@@ -134,3 +134,17 @@ def test_http_rate_limit_contract(client):
     assert response.headers["Retry-After"] == "60"
     assert response.json() == {"detail": "Rate limit exceeded"}
     limits.clear()
+
+
+def test_login_validation_redacts_input(client):
+    secret = "sensitive-password-" * 10
+    response = client.post(
+        "/api/v1/auth/login", json={"email": "a@b.test", "password": secret}
+    )
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert response.json()["detail"] == "Invalid request"
+    assert any(
+        field["field"] == "body.password"
+        for field in response.json()["fields"]
+    )
