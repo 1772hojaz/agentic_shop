@@ -29,3 +29,18 @@ def test_opening_inventory_boundaries():
                 VariantInput(sku="SKU", price="0", **{field: value})
         for value in (0, 1000000):
             assert VariantInput(sku="SKU", price="0", **{field: value})
+
+
+def test_product_variant_count():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import ProductInput
+
+    variant = {"sku": "SKU", "price": "1.00"}
+    for variants in ([], [variant] * 31):
+        with pytest.raises(ValidationError):
+            ProductInput(name="Shoes", variants=variants)
+    assert (
+        len(ProductInput(name="Shoes", variants=[variant] * 30).variants) == 30
+    )
