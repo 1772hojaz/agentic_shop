@@ -15,3 +15,17 @@ def test_variant_price_precision():
     assert VariantInput(sku="SKU", price="999999999999.99").price == Decimal(
         "999999999999.99"
     )
+
+
+def test_opening_inventory_boundaries():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import VariantInput
+
+    for field in ("quantity", "low_stock_threshold"):
+        for value in (-1, 1000001):
+            with pytest.raises(ValidationError):
+                VariantInput(sku="SKU", price="0", **{field: value})
+        for value in (0, 1000000):
+            assert VariantInput(sku="SKU", price="0", **{field: value})
