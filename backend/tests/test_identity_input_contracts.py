@@ -25,3 +25,18 @@ def test_staff_password_boundaries():
             StaffInput(email="a@b.test", name="Staff", password="x" * size)
     for size in (12, 128):
         assert StaffInput(email="a@b.test", name="Staff", password="x" * size)
+
+
+def test_staff_roles_are_closed():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import StaffInput, StaffUpdate
+
+    for role in ("admin", "superuser", "customer", ""):
+        with pytest.raises(ValidationError):
+            StaffUpdate(role=role)
+        with pytest.raises(ValidationError):
+            StaffInput(
+                email="a@b.test", name="Staff", password="x" * 12, role=role
+            )
