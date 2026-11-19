@@ -46,3 +46,17 @@ def test_unicode_password_round_trip():
     stored = hash_password(password)
     assert verify_password(password, stored)
     assert not verify_password("ijambo-ryibanga-e", stored)
+
+
+def test_principal_requires_explicit_permission():
+    import pytest
+    from fastapi import HTTPException
+
+    from app.auth import Principal
+
+    actor = Principal("user", "admin", {"products.read"})
+    assert actor.require("products.read") is None
+    for permission in ("products.write", "staff.write", "unknown"):
+        with pytest.raises(HTTPException) as error:
+            actor.require(permission)
+        assert error.value.status_code == 403
