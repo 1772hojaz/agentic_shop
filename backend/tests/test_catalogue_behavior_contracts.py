@@ -34,3 +34,15 @@ def test_catalogue_percent_is_literal(client, product, store):
         client.get("/api/v1/products", params={"query": "%"}).json()["total"]
         == 1
     )
+
+
+def test_catalogue_price_ceiling(client, product):
+    assert (
+        client.get("/api/v1/products", params={"max_price": "25.49"}).json()[
+            "total"
+        ]
+        == 0
+    )
+    response = client.get("/api/v1/products", params={"max_price": "25.50"})
+    assert response.status_code == 200
+    assert response.json()["items"][0]["id"] == product["id"]
