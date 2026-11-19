@@ -40,3 +40,15 @@ def test_staff_roles_are_closed():
             StaffInput(
                 email="a@b.test", name="Staff", password="x" * 12, role=role
             )
+
+
+def test_category_names_are_trimmed_and_nonempty():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import CategoryInput
+
+    assert CategoryInput(name="  Shoes  ").name == "Shoes"
+    for name in ("", "  ", "x" * 101):
+        with pytest.raises(ValidationError):
+            CategoryInput(name=name)
