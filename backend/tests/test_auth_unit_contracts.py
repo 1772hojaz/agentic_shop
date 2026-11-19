@@ -80,3 +80,23 @@ def test_staff_defaults_are_operational_only():
         "orders.write",
         "ai.chat",
     }
+
+
+def test_customer_capabilities_are_personal():
+    from app.auth import CUSTOMER_PERMISSIONS
+
+    assert {
+        "cart.own",
+        "orders.own",
+        "products.read",
+        "ai.chat",
+    } <= CUSTOMER_PERMISSIONS
+    assert not CUSTOMER_PERMISSIONS & {
+        "staff.write",
+        "settings.write",
+        "orders.write",
+        "payments.write",
+        "customers.read",
+        "reports.read",
+        "inventory.write",
+    }
