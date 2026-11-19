@@ -132,3 +132,33 @@ def test_empty_cart_cannot_create_order(client, headers, store):
     assert response.json()["detail"] == "Cart is empty"
     with store() as db:
         assert db.scalar(select(func.count()).select_from(Order)) == 0
+
+
+def test_delivery_requires_address_and_preserves_cart(
+    client, headers, product, store
+):
+    from app.models import Inventory
+
+    variant = product["variants"][0]["id"]
+    assert (
+        client.put(
+            "/api/v1/carts/me/items",
+            headers=headers["customer1"],
+            json={"variant_id": variant, "quantity": 2},
+        ).status_code
+        == 200
+    )
+    response = client.post(
+        "/api/v1/orders",
+        headers=headers["customer1"],
+        json={
+            "checkout_key": "delivery-no-address-0001",
+            "method": "delivery",
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Delivery address required"
+    cart = client.get("/api/v1/carts/me", headers=headers["customer1"]).json()
+    assert cart["items"][0]["quantity"] == 2
+    with store() as db:
+        assert db.get(Inventory, variant).quantity == 10
