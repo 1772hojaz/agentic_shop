@@ -52,3 +52,15 @@ def test_category_names_are_trimmed_and_nonempty():
     for name in ("", "  ", "x" * 101):
         with pytest.raises(ValidationError):
             CategoryInput(name=name)
+
+
+def test_chat_message_boundaries():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import ChatInput
+
+    for message in ("", "  ", "x" * 4001):
+        with pytest.raises(ValidationError):
+            ChatInput(message=message)
+    assert ChatInput(message="x" * 4000).message == "x" * 4000
