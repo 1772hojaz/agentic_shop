@@ -116,3 +116,19 @@ def test_unavailable_cart_change_keeps_previous_quantity(
     cart = client.get("/api/v1/carts/me", headers=headers["customer1"]).json()
     assert len(cart["items"]) == 1
     assert cart["items"][0]["quantity"] == 2
+
+
+def test_empty_cart_cannot_create_order(client, headers, store):
+    from sqlalchemy import func, select
+
+    from app.models import Order
+
+    response = client.post(
+        "/api/v1/orders",
+        headers=headers["customer1"],
+        json={"checkout_key": "empty-cart-checkout-0001"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cart is empty"
+    with store() as db:
+        assert db.scalar(select(func.count()).select_from(Order)) == 0
