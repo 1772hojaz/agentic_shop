@@ -122,3 +122,15 @@ def test_http_body_size_boundary(client):
         client.get("/health", headers={"Content-Length": "0"}).status_code
         == 200
     )
+
+
+def test_http_rate_limit_contract(client):
+    from app.main import limits
+
+    for _ in range(180):
+        assert client.get("/health").status_code == 200
+    response = client.get("/health")
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "60"
+    assert response.json() == {"detail": "Rate limit exceeded"}
+    limits.clear()
