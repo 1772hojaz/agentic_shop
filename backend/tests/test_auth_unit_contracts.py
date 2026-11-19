@@ -111,3 +111,17 @@ def test_session_digest_contract():
     )
     assert digest("session-token") != digest("Session-token")
     assert len(digest("session-token")) == 64
+
+
+def test_serialization_hides_authentication_material():
+    from app.catalogue import serialize
+    from app.models import AdminBinding, AuthSession, User
+
+    user = User(email="a@b.test", name="Owner", password_hash="private")
+    session = AuthSession(token_hash="private", csrf="csrf")
+    binding = AdminBinding(code_hash="private")
+    assert "password_hash" not in serialize(user)
+    assert "token_hash" not in serialize(session)
+    assert "code_hash" not in serialize(binding)
+    assert "email" not in serialize(user, {"email"})
+    assert serialize(user)["name"] == "Owner"
