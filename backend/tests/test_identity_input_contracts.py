@@ -118,3 +118,19 @@ def test_role_permission_list_limit():
     )
     with pytest.raises(ValidationError):
         RoleUpdate(permissions=["products.read"] * 31)
+
+
+def test_login_credential_limits():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import Login
+
+    for payload in (
+        {"email": "ab", "password": "x"},
+        {"email": "x" * 255, "password": "x"},
+        {"email": "a@b", "password": ""},
+        {"email": "a@b", "password": "x" * 129},
+    ):
+        with pytest.raises(ValidationError):
+            Login(**payload)
