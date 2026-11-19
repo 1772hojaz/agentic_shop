@@ -104,3 +104,17 @@ def test_shop_instruction_limits():
         assert SettingInput(**{field: "x" * limit})
         with pytest.raises(ValidationError):
             SettingInput(**{field: "x" * (limit + 1)})
+
+
+def test_role_permission_list_limit():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import RoleUpdate
+
+    assert RoleUpdate(permissions=[]).permissions == []
+    assert (
+        len(RoleUpdate(permissions=["products.read"] * 30).permissions) == 30
+    )
+    with pytest.raises(ValidationError):
+        RoleUpdate(permissions=["products.read"] * 31)
