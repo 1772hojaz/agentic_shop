@@ -10,3 +10,16 @@ def test_password_hashes_use_independent_salts():
     assert verify_password("correct horse battery staple", first)
     assert verify_password("correct horse battery staple", second)
     assert "correct horse battery staple" not in first
+
+
+def test_wrong_password_is_rejected():
+    from app.auth import hash_password, verify_password
+
+    stored = hash_password("correct-password")
+    for password in (
+        "wrong-password",
+        "",
+        "Correct-password",
+        "correct-password ",
+    ):
+        assert not verify_password(password, stored)
