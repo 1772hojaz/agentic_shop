@@ -37,3 +37,28 @@ def test_production_requires_secure_transport():
                 cookie_secure=secure,
                 public_url=url,
             )
+
+
+def test_production_ai_transport():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    with pytest.raises(ValidationError, match="model requests require HTTPS"):
+        Settings(
+            _env_file=None,
+            environment="production",
+            database_url="postgresql://localhost/shop",
+            cookie_secure=True,
+            public_url="https://shop.example",
+            ai_api_url="http://model.test",
+        )
+    assert Settings(
+        _env_file=None,
+        environment="production",
+        database_url="postgresql://localhost/shop",
+        cookie_secure=True,
+        public_url="https://shop.example",
+        ai_api_url="https://model.test",
+    )
