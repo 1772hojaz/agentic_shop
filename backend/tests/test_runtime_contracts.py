@@ -79,3 +79,16 @@ def test_agent_work_limits():
                 AgentConfig(**{field: value})
     assert AgentConfig(daily_tokens=1000, max_iterations=1)
     assert AgentConfig(daily_tokens=1000000, max_iterations=6)
+
+
+def test_agent_prices_must_be_finite():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import AgentConfig
+
+    for field in ("input_price", "output_price"):
+        for value in (-1, 10001, float("nan"), float("inf")):
+            with pytest.raises(ValidationError):
+                AgentConfig(**{field: value})
+        assert AgentConfig(**{field: 10000})
