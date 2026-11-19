@@ -37,3 +37,12 @@ def test_malformed_password_hashes_fail_closed():
         "scrypt$salt$invalid",
     ):
         assert not verify_password("password", stored)
+
+
+def test_unicode_password_round_trip():
+    from app.auth import hash_password, verify_password
+
+    password = "ijambo-ryibanga-é☃"
+    stored = hash_password(password)
+    assert verify_password(password, stored)
+    assert not verify_password("ijambo-ryibanga-e", stored)
