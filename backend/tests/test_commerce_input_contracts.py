@@ -44,3 +44,30 @@ def test_product_variant_count():
     assert (
         len(ProductInput(name="Shoes", variants=[variant] * 30).variants) == 30
     )
+
+
+def test_product_image_schemes():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import ProductInput, ProductUpdate
+
+    for model, extra in (
+        (ProductInput, {"variants": [{"sku": "S", "price": 0}]}),
+        (ProductUpdate, {}),
+    ):
+        for url in (
+            "http://example.test/a.png",
+            "javascript:alert(1)",
+            "data:image/png;x",
+        ):
+            with pytest.raises(ValidationError):
+                model(name="Product", image_url=url, **extra)
+        for url in (
+            "",
+            "/uploads/image.png",
+            "https://example.test/image.png",
+        ):
+            assert (
+                model(name="Product", image_url=url, **extra).image_url == url
+            )
