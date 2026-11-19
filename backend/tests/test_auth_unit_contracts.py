@@ -60,3 +60,12 @@ def test_principal_requires_explicit_permission():
         with pytest.raises(HTTPException) as error:
             actor.require(permission)
         assert error.value.status_code == 403
+
+
+def test_manager_defaults_exclude_owner_powers():
+    from app.auth import PERMISSIONS, role_defaults
+
+    grants = role_defaults("manager")
+    assert "staff.write" not in grants
+    assert "settings.write" not in grants
+    assert grants == PERMISSIONS - {"staff.write", "settings.write"}
