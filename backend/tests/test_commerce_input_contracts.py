@@ -134,3 +134,16 @@ def test_staff_cannot_submit_payment_states():
         with pytest.raises(ValidationError):
             OrderStatus(order_id="o", status=status)
     assert OrderStatus(order_id="o", status="processing")
+
+
+def test_payment_method_contract():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas import PaymentInput
+
+    for method in ("bank", "mobile_money", "paid", ""):
+        with pytest.raises(ValidationError):
+            PaymentInput(order_id="o", method=method)
+    for method in ("cash", "stripe"):
+        assert PaymentInput(order_id="o", method=method).method == method
